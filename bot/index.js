@@ -168,11 +168,12 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 })();
 
 client.once('ready', () => {
-    console.log(`\n${'═'.repeat(50)}`);
+    console.log(`\n${'='.repeat(50)}`);
     console.log(`🚀 ${client.user.tag} est en ligne !`);
-    console.log('═'.repeat(50));
+    console.log('='.repeat(50));
     console.log(`🎯 Serveurs: ${client.guilds.cache.size}`);
     console.log(`🔗 Site: ${SITE_URL}`);
+    console.log(`🔑 SECRET_KEY: ${SECRET_KEY.substring(0, 20)}...`);
     console.log(`📊 Appels: ${Object.keys(appealsDB).length}`);
     console.log(`📝 Formulaires personnalisés: ${Object.keys(customForms).length}`);
     console.log(`\n🛠️ Commandes disponibles: ${commands.length}`);
@@ -206,7 +207,7 @@ async function handleCommands(interaction) {
         let webhook;
         try {
             const webhooks = await channel.fetchWebhooks();
-            webhook = webhooks.find(wh => wh.owner.id === client.user.id && wh.name === 'Chell Appeals');
+            webhook = webhooks.find(wh => wh.owner && wh.owner.id === client.user.id && wh.name === 'Chell Appeals');
             if (!webhook) {
                 webhook = await channel.createWebhook({
                     name: 'Chell Appeals',
@@ -214,16 +215,25 @@ async function handleCommands(interaction) {
                 });
             }
         } catch (error) {
+            console.error('❌ Erreur webhook:', error);
             return interaction.reply({ content: '❌ Impossible de créer un webhook.', ephemeral: true });
         }
 
+        // FIX: Cryptage propre sans double encoding
         const dataToEncrypt = JSON.stringify({
             webhookUrl: webhook.url,
             ping: pingOption,
             formName: formName || 'default'
         });
+        
+        console.log('🔐 Données à crypter:', dataToEncrypt.substring(0, 100));
+        console.log('🔑 Clé utilisée:', SECRET_KEY);
+        
         const encryptedData = CryptoJS.AES.encrypt(dataToEncrypt, SECRET_KEY).toString();
+        console.log('🔒 Données cryptées:', encryptedData.substring(0, 50));
+        
         const finalLink = `${SITE_URL}/?code=${encodeURIComponent(encryptedData)}`;
+        console.log('🔗 Lien final:', finalLink.substring(0, 100));
 
         const embed = new EmbedBuilder()
             .setTitle('✅ Formulaire d\'appel configuré')
@@ -455,7 +465,7 @@ async function startFormBuilder(interaction) {
     
     const embed = new EmbedBuilder()
         .setTitle('🎨 Créateur de formulaire personnalisé')
-        .setDescription('Bienvenue dans le créateur de formulaire interactif !\n\nVous pouvez créer un formulaire avec jusqu\'à **10 questions** personnalisées.')
+        .setDescription('Bienvenue dans le créateur de formulaire interactif !\n\nVous pouvez créer un formulaire avec jusqu\'\u00e0 **10 questions** personnalisées.')
         .setColor(0x6366f1)
         .addFields(
             { name: '📝 Types de champs disponibles', value: '• Texte court\n• Texte long\n• Choix multiple (cocher)\n• Sélection unique\n• Upload de fichiers' },
