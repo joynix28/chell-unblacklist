@@ -1,111 +1,294 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="govuk-template">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demande d'Unblacklist - ChillChell</title>
+    <title>Demande de révision - Système Chell</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
 <body>
-    <div class="bg-glow glow-1"></div>
-    <div class="bg-glow glow-2"></div>
-
-    <div class="container" id="login-container">
-        <div class="card glass center-content">
-            <div class="logo">🔐</div>
-            <h1>Connexion Requise</h1>
-            <p>Pour accéder au formulaire de demande d'unblacklist, connecte-toi avec Discord.</p>
-            <button onclick="loginDiscord()" class="btn-discord">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
-                Se connecter avec Discord
-            </button>
-        </div>
-    </div>
-
-    <div class="container hidden" id="form-container">
-        <div class="header glass-header">
-            <div class="user-info">
-                <img src="" alt="Avatar" id="user-avatar">
-                <div>
-                    <h2 id="user-name">Chargement...</h2>
-                    <span class="badge">Dossier Blacklist</span>
+    <!-- Header officiel -->
+    <header class="chell-header">
+        <div class="container">
+            <div class="header-brand">
+                <svg class="chell-logo" width="40" height="40" viewBox="0 0 40 40" fill="none">
+                    <rect width="40" height="40" rx="8" fill="url(#gradient)"/>
+                    <path d="M12 20C12 15.5817 15.5817 12 20 12C24.4183 12 28 15.5817 28 20C28 24.4183 24.4183 28 20 28C15.5817 28 12 24.4183 12 20Z" stroke="white" stroke-width="2"/>
+                    <path d="M16 20L19 23L24 17" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <defs>
+                        <linearGradient id="gradient" x1="0" y1="0" x2="40" y2="40">
+                            <stop offset="0%" stop-color="#6366f1"/>
+                            <stop offset="100%" stop-color="#a855f7"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <div class="brand-text">
+                    <span class="brand-title">Système Chell</span>
+                    <span class="brand-subtitle">Service de révision</span>
                 </div>
             </div>
         </div>
+    </header>
 
-        <form id="unbanForm" class="glass">
-            <h2>📨 Formulaire de Réintégration</h2>
-            <p class="subtitle">Remplis ce formulaire avec honnêteté. Tout mensonge entraînera un rejet définitif.</p>
-
-            <div class="section">
-                <h3>🧩 1 • Informations d'identification</h3>
-                <label>Date approximative du blacklist</label>
-                <input type="date" name="date_blacklist" required>
-            </div>
-
-            <div class="section">
-                <h3>📚 2 • Connaissance de la raison</h3>
-                <label>Sais-tu pourquoi tu as été blacklist ?</label>
-                <select name="reason_known" id="reason_known" onchange="toggleReasonInput()" required>
-                    <option value="">Sélectionner...</option>
-                    <option value="Oui">Oui</option>
-                    <option value="Non">Non</option>
-                </select>
-                <div id="reason_yes" class="hidden mt-4">
-                    <label>Explique la raison exacte selon toi :</label>
-                    <textarea name="reason_explanation" placeholder="Décris l'événement, ton comportement, ou l'action précise..."></textarea>
-                </div>
-                <div id="reason_no" class="hidden mt-4">
-                    <label>Explique pourquoi tu ne connais pas la raison :</label>
-                    <textarea name="reason_unknown" placeholder="Absence d'explication, sanction trop ancienne, incompréhension..."></textarea>
-                </div>
-            </div>
-
-            <div class="section">
-                <h3>🧠 3 • Accord ou désaccord avec la sanction</h3>
-                <label>Es-tu d'accord avec le blacklist ?</label>
-                <select name="agreement" required>
-                    <option value="Oui">Oui</option>
-                    <option value="Plutôt oui">Plutôt oui</option>
-                    <option value="Plutôt non">Plutôt non</option>
-                    <option value="Non">Non</option>
-                </select>
-                <textarea name="agreement_desc" class="mt-4" placeholder="Explique ce que tu comprends dans la décision ou pourquoi tu contestes..." required></textarea>
-            </div>
-
-            <div class="section">
-                <h3>✔️ 4 • Reconnaissance ou contestation des faits</h3>
-                <label>Reconnais-tu les faits qui ont conduit au blacklist ?</label>
-                <select name="admission" required>
-                    <option value="Oui">Oui</option>
-                    <option value="Partiellement">Partiellement</option>
-                    <option value="Non">Non</option>
-                </select>
-                <textarea name="admission_desc" class="mt-4" placeholder="Précise ce que tu reconnais avoir fait et dans quelles circonstances..." required></textarea>
-            </div>
-
-            <div class="section">
-                <h3>🔧 5 • Analyse personnelle et prise de recul</h3>
-                <label>Qu'as-tu compris depuis l'incident ? Qu'aurais-tu pu faire différemment ?</label>
-                <textarea name="analysis" style="height: 120px" placeholder="Réponds même si tu contestes : cela montre ta capacité à prendre du recul." required></textarea>
-            </div>
-
-            <div class="section">
-                <h3>✨ 6 • Motivation pour l'unblacklist</h3>
-                <label>Pourquoi devrions-nous envisager de lever ta sanction ?</label>
-                <textarea name="motivation" style="height: 120px" placeholder="Qu'est-ce qui a changé dans ton comportement ? Comment garantir que cela ne se reproduira pas ?" required></textarea>
-            </div>
-
-            <div class="section">
-                <h3>💬 7 • Informations complémentaires (facultatif)</h3>
-                <textarea name="extras" placeholder="Preuves, contexte supplémentaire, captures d'écran, explications..."></textarea>
-            </div>
-
-            <button type="submit" class="btn-submit">Envoyer la demande</button>
-        </form>
+    <!-- Phase Banner -->
+    <div class="phase-banner">
+        <div class="container">
+            <span class="phase-tag">BETA</span>
+            <span class="phase-text">Ce service est en version bêta. Signalez tout problème rencontré.</span>
+        </div>
     </div>
+
+    <!-- Login Screen -->
+    <div class="main-content" id="login-container">
+        <div class="container">
+            <div class="grid-row">
+                <div class="grid-col-two-thirds">
+                    <h1 class="heading-xl">Vérification de votre identité</h1>
+                    
+                    <div class="notification info">
+                        <p class="notification-title">🔒 Authentification requise</p>
+                        <p>Pour accéder au formulaire de demande de révision, vous devez vous identifier avec votre compte Discord.</p>
+                    </div>
+
+                    <div class="inset-text">
+                        <p><strong>Pourquoi cette étape ?</strong></p>
+                        <p>L'authentification garantit la sécurité de votre demande et permet de vérifier votre identité.</p>
+                    </div>
+
+                    <button onclick="loginDiscord()" class="button-start">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+                        </svg>
+                        Continuer avec Discord
+                    </button>
+
+                    <details class="details">
+                        <summary>Aide et sécurité</summary>
+                        <div class="details-content">
+                            <p>Vos données sont protégées et ne seront utilisées que pour traiter votre demande.</p>
+                            <p>Si vous rencontrez des difficultés, contactez un modérateur du serveur.</p>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Screen -->
+    <div class="main-content hidden" id="form-container">
+        <div class="container">
+            <div class="grid-row">
+                <div class="grid-col-full">
+                    <!-- User Info Card -->
+                    <div class="user-card">
+                        <img src="" alt="Avatar" id="user-avatar" class="user-avatar">
+                        <div class="user-details">
+                            <h2 class="heading-m" id="user-name">Chargement...</h2>
+                            <p class="user-status">
+                                <span class="status-badge status-warning">Dossier en cours</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <form id="unbanForm" class="form-professional">
+                        <h1 class="heading-xl">Demande de révision de sanction</h1>
+                        <p class="body-lead">Remplissez ce formulaire avec sincérité. Les informations fournies seront examinées par l'équipe de modération.</p>
+
+                        <!-- Section 1 -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">1. Informations préliminaires</h2>
+                            </legend>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="date_blacklist">
+                                    Date approximative de la sanction
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <div class="form-hint">Par exemple, 15/01/2026</div>
+                                <input class="form-control" type="date" id="date_blacklist" name="date_blacklist" required>
+                            </div>
+                        </fieldset>
+
+                        <!-- Section 2 -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">2. Connaissance de la raison</h2>
+                            </legend>
+
+                            <div class="form-group">
+                                <label class="form-label" for="reason_known">
+                                    Connaissez-vous la raison de votre sanction ?
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <select class="form-select" id="reason_known" name="reason_known" onchange="toggleReasonInput()" required>
+                                    <option value="">-- Sélectionnez une réponse --</option>
+                                    <option value="Oui">Oui</option>
+                                    <option value="Non">Non</option>
+                                </select>
+                            </div>
+
+                            <div id="reason_yes" class="form-group hidden">
+                                <label class="form-label" for="reason_explanation">
+                                    Expliquez la raison selon vous
+                                </label>
+                                <div class="form-hint">Décrivez précisément l'événement, votre comportement, ou l'action ayant conduit à la sanction.</div>
+                                <textarea class="form-textarea" id="reason_explanation" name="reason_explanation" rows="5"></textarea>
+                            </div>
+
+                            <div id="reason_no" class="form-group hidden">
+                                <label class="form-label" for="reason_unknown">
+                                    Pourquoi ne connaissez-vous pas la raison ?
+                                </label>
+                                <div class="form-hint">Absence d'explication, sanction trop ancienne, incompréhension...</div>
+                                <textarea class="form-textarea" id="reason_unknown" name="reason_unknown" rows="5"></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Section 3 -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">3. Position sur la sanction</h2>
+                            </legend>
+
+                            <div class="form-group">
+                                <label class="form-label" for="agreement">
+                                    Êtes-vous d'accord avec la décision ?
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <select class="form-select" id="agreement" name="agreement" required>
+                                    <option value="">-- Sélectionnez --</option>
+                                    <option value="Oui">Oui, totalement</option>
+                                    <option value="Plutôt oui">Plutôt oui</option>
+                                    <option value="Plutôt non">Plutôt non</option>
+                                    <option value="Non">Non, pas du tout</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="agreement_desc">
+                                    Développez votre point de vue
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <div class="form-hint">Expliquez ce qui vous semble justifié ou contesté dans la décision.</div>
+                                <textarea class="form-textarea" id="agreement_desc" name="agreement_desc" rows="5" required></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Section 4 -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">4. Reconnaissance des faits</h2>
+                            </legend>
+
+                            <div class="form-group">
+                                <label class="form-label" for="admission">
+                                    Reconnaissez-vous les faits reprochés ?
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <select class="form-select" id="admission" name="admission" required>
+                                    <option value="">-- Sélectionnez --</option>
+                                    <option value="Oui">Oui, entièrement</option>
+                                    <option value="Partiellement">Partiellement</option>
+                                    <option value="Non">Non</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="admission_desc">
+                                    Précisions
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <div class="form-hint">Détaillez ce que vous admettez ou contestez, et dans quelles circonstances.</div>
+                                <textarea class="form-textarea" id="admission_desc" name="admission_desc" rows="5" required></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Section 5 -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">5. Prise de recul</h2>
+                            </legend>
+
+                            <div class="form-group">
+                                <label class="form-label" for="analysis">
+                                    Qu'avez-vous compris depuis l'incident ?
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <div class="form-hint">Qu'auriez-vous pu faire différemment ? Quelle leçon en tirez-vous ?</div>
+                                <textarea class="form-textarea" id="analysis" name="analysis" rows="6" required></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Section 6 -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">6. Motivation</h2>
+                            </legend>
+
+                            <div class="form-group">
+                                <label class="form-label" for="motivation">
+                                    Pourquoi devrions-nous lever votre sanction ?
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                                <div class="form-hint">Qu'est-ce qui a changé ? Quelles garanties pouvez-vous apporter ?</div>
+                                <textarea class="form-textarea" id="motivation" name="motivation" rows="6" required></textarea>
+                            </div>
+                        </fieldset>
+
+                        <!-- Section 7 - Pièces jointes -->
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">
+                                <h2 class="heading-l">7. Informations complémentaires</h2>
+                            </legend>
+
+                            <div class="form-group">
+                                <label class="form-label" for="extras">
+                                    Remarques ou contexte supplémentaire
+                                    <span class="form-optional">(facultatif)</span>
+                                </label>
+                                <textarea class="form-textarea" id="extras" name="extras" rows="4" placeholder="Ajoutez ici tout élément pertinent..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="attachments">
+                                    Pièces justificatives
+                                    <span class="form-optional">(facultatif)</span>
+                                </label>
+                                <div class="form-hint">Vous pouvez joindre des captures d'écran ou documents (max 10 Mo par fichier)</div>
+                                <input type="file" class="form-file" id="attachments" name="attachments" multiple accept="image/*,.pdf,.txt">
+                                <div id="file-list" class="file-list"></div>
+                            </div>
+                        </fieldset>
+
+                        <!-- Warning -->
+                        <div class="warning-text">
+                            <span class="warning-icon">⚠️</span>
+                            <div>
+                                <strong>Avertissement</strong>
+                                <p>Toute fausse déclaration ou omission volontaire entraînera un rejet immédiat de votre demande.</p>
+                            </div>
+                        </div>
+
+                        <!-- Submit -->
+                        <button type="submit" class="button-submit">
+                            Soumettre la demande
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="chell-footer">
+        <div class="container">
+            <p class="footer-text">Système Chell &copy; 2026 • Service sécurisé</p>
+        </div>
+    </footer>
+
     <script src="script.js"></script>
 </body>
 </html>
