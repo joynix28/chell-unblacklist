@@ -1,7 +1,7 @@
 const CLIENT_ID = "1475575856993665134";
 const SECRET_KEY = "CHELL_SECURITY_KEY_2026_ULTRA_SECURE";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const BOT_API_URL = "http://localhost:3000"; // CHANGE EN PROD: URL de ton serveur bot
+const BOT_API_URL = "n1mrs.cloudnest-hosting.xyz:2835"; // CHANGE EN PROD: URL de ton serveur bot
 
 let uploadedFiles = [];
 let webhookConfig = null;
