@@ -1,7 +1,7 @@
 const CLIENT_ID = "1475575856993665134";
 const SECRET_KEY = "CHELL_SECURITY_KEY_2026_ULTRA_SECURE";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const BOT_API_URL = "n1mrs.cloudnest-hosting.xyz:2835"; // CHANGE EN PROD: URL de ton serveur bot
+const BOT_API_URL = "n1mrs.cloudnest-hosting.xyz:2835";
 
 let uploadedFiles = [];
 let webhookConfig = null;
@@ -53,36 +53,28 @@ function loginDiscord() {
 
 function generateCustomForm(customFormData) {
     console.log('🎨 Génération formulaire personnalisé:', customFormData);
-    
     const form = document.getElementById('unbanForm');
     form.innerHTML = '';
-    
     if (customFormData.theme) {
         document.documentElement.style.setProperty('--color-primary', customFormData.theme.color || '#6366f1');
     }
-    
     const intro = document.createElement('div');
     intro.innerHTML = `
         <h1 class="heading-xl">Formulaire personnalisé</h1>
         <p class="body-lead">Remplissez tous les champs avec sincérité.</p>
     `;
     form.appendChild(intro);
-    
     customFormData.questions.forEach((q, index) => {
         const fieldset = document.createElement('fieldset');
         fieldset.className = 'fieldset';
-        
         const legend = document.createElement('legend');
         legend.className = 'fieldset-legend';
         legend.innerHTML = `<h2 class="heading-l">${index + 1}. ${q.label}</h2>`;
         fieldset.appendChild(legend);
-        
         const formGroup = document.createElement('div');
         formGroup.className = 'form-group';
-        
         let inputHTML = '';
         const fieldName = `custom_field_${index}`;
-        
         if (q.type === 'short_text') {
             inputHTML = `<input class="form-control" type="text" id="${fieldName}" name="${fieldName}" ${q.required ? 'required' : ''}>`;
         } else if (q.type === 'long_text') {
@@ -107,18 +99,15 @@ function generateCustomForm(customFormData) {
                 <div id="file-list-${index}" class="file-list"></div>
             `;
         }
-        
         formGroup.innerHTML = `
             <label class="form-label" for="${fieldName}">
                 ${q.label} ${q.required ? '<span class="form-required">(obligatoire)</span>' : '<span class="form-optional">(facultatif)</span>'}
             </label>
             ${inputHTML}
         `;
-        
         fieldset.appendChild(formGroup);
         form.appendChild(fieldset);
     });
-    
     const cguGroup = document.createElement('div');
     cguGroup.className = 'form-group';
     cguGroup.innerHTML = `
@@ -131,7 +120,6 @@ function generateCustomForm(customFormData) {
         </div>
     `;
     form.appendChild(cguGroup);
-    
     const warning = document.createElement('div');
     warning.className = 'warning-text';
     warning.innerHTML = `
@@ -142,13 +130,11 @@ function generateCustomForm(customFormData) {
         </div>
     `;
     form.appendChild(warning);
-    
     const submitBtn = document.createElement('button');
     submitBtn.type = 'submit';
     submitBtn.className = 'button-submit';
     submitBtn.textContent = 'Soumettre la demande';
     form.appendChild(submitBtn);
-    
     console.log('✅ Formulaire personnalisé généré');
 }
 
@@ -168,7 +154,6 @@ window.onload = async () => {
     }
     
     encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
-    
     if (params.code) localStorage.setItem('pending_code', params.code);
 
     if (token) {
@@ -180,9 +165,7 @@ window.onload = async () => {
                 headers: { authorization: `Bearer ${token}` }
             });
             
-            if (!userReq.ok) {
-                throw new Error('Token expired');
-            }
+            if (!userReq.ok) throw new Error('Token expired');
             
             const user = await userReq.json();
             console.log('✅ User connecté:', user.username, `(${user.id})`);
@@ -191,9 +174,7 @@ window.onload = async () => {
                 const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
                 const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
                 
-                if (!decryptedData || decryptedData === '') {
-                    throw new Error('Décryptage échoué');
-                }
+                if (!decryptedData || decryptedData === '') throw new Error('Décryptage échoué');
                 
                 webhookConfig = JSON.parse(decryptedData);
                 console.log('✅ Config chargée:', {
@@ -201,13 +182,48 @@ window.onload = async () => {
                     form: webhookConfig.formName
                 });
                 
-                // FIX: Vérifier les tentatives via API bot
+                // 🚫 Vérifier si le webhook est blacklisté
+                const webhookIdMatch = webhookConfig.webhookUrl.match(/webhooks\/(\d+)/);
+                if (webhookIdMatch) {
+                    const webhookId = webhookIdMatch[1];
+                    console.log(`🔍 Vérification blacklist pour webhook ${webhookId}...`);
+                    
+                    try {
+                        const blacklistCheck = await fetch(`http://${BOT_API_URL}/api/check-webhook/${webhookId}`);
+                        
+                        if (blacklistCheck.ok) {
+                            const blacklistData = await blacklistCheck.json();
+                            
+                            if (blacklistData.blacklisted) {
+                                console.error('🚫 Lien désactivé');
+                                
+                                document.getElementById('form-container').innerHTML = `
+                                    <div class="container">
+                                        <div style="text-align: center; padding: 60px 20px;">
+                                            <h1 style="color: var(--color-error); font-size: 3rem;">🚫 Lien désactivé</h1>
+                                            <p style="font-size: 1.2rem; margin-top: 20px; color: var(--color-text-secondary);">Ce lien de formulaire a été désactivé par un administrateur.</p>
+                                            <div style="margin-top: 30px; padding: 20px; background: var(--color-error-bg); border-radius: 8px; border-left: 4px solid var(--color-error);">
+                                                <strong>Raison :</strong> ${blacklistData.reason || 'Aucune raison spécifiée'}
+                                            </div>
+                                            <p style="margin-top: 20px;">Contactez un modérateur pour plus d'informations.</p>
+                                        </div>
+                                    </div>
+                                `;
+                                return;
+                            }
+                        }
+                    } catch (apiError) {
+                        console.warn('⚠️ Impossible de vérifier la blacklist');
+                    }
+                }
+                
+                // Vérifier les tentatives via API bot
                 console.log(`🔍 Vérification tentatives pour ${user.id}...`);
                 try {
-                    const checkResponse = await fetch(`${BOT_API_URL}/api/check-attempts/${user.id}`);
+                    const checkResponse = await fetch(`http://${BOT_API_URL}/api/check-attempts/${user.id}`);
                     
                     if (!checkResponse.ok) {
-                        console.warn('⚠️ Impossible de vérifier les tentatives, autorisation par défaut');
+                        console.warn('⚠️ API tentatives non disponible');
                         userLimitsData = { allowed: true, attempts: 0, maxAttempts: 1 };
                     } else {
                         userLimitsData = await checkResponse.json();
@@ -249,7 +265,6 @@ window.onload = async () => {
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ embeds: [blockEmbed] })
                                 });
-                                
                                 return;
                             } else {
                                 counter.innerHTML = `📊 Tentative ${userLimitsData.attempts + 1}/${userLimitsData.maxAttempts}`;
@@ -257,8 +272,7 @@ window.onload = async () => {
                         }
                     }
                 } catch (apiError) {
-                    console.error('❌ Erreur API bot:', apiError);
-                    console.warn('⚠️ Continuer sans vérification de tentatives');
+                    console.warn('⚠️ Continuer sans vérification');
                     userLimitsData = { allowed: true, attempts: 0, maxAttempts: 1 };
                 }
                 
@@ -272,9 +286,7 @@ window.onload = async () => {
                 alert('❌ Erreur de décryptage du lien.\n\nContacte le support.');
                 localStorage.removeItem('pending_code');
                 localStorage.removeItem('discord_token');
-                setTimeout(() => {
-                    window.location.href = window.location.pathname;
-                }, 3000);
+                setTimeout(() => window.location.href = window.location.pathname, 3000);
                 return;
             }
             
@@ -287,18 +299,14 @@ window.onload = async () => {
             
         } catch (e) {
             console.error('❌ Erreur:', e);
-            alert('❌ Une erreur est survenue.\n\n' + e.message + '\n\nVous allez être redirigé.');
+            alert('❌ Une erreur est survenue.\n\n' + e.message);
             localStorage.removeItem('discord_token');
-            if (!params.access_token) {
-                setTimeout(() => window.location.reload(), 2000);
-            }
+            if (!params.access_token) setTimeout(() => window.location.reload(), 2000);
         }
     }
     
     const fileInput = document.getElementById('attachments');
-    if (fileInput) {
-        fileInput.addEventListener('change', handleFileSelect);
-    }
+    if (fileInput) fileInput.addEventListener('change', handleFileSelect);
 };
 
 function toggleReasonInput() {
@@ -312,22 +320,14 @@ function toggleReasonInput() {
 function handleFileSelect(e) {
     const files = Array.from(e.target.files);
     const fileList = document.getElementById('file-list');
-    
     files.forEach(file => {
         if (file.size > 10 * 1024 * 1024) {
             alert(`Le fichier "${file.name}" dépasse la taille maximale de 10 Mo.`);
             return;
         }
-        
         const reader = new FileReader();
         reader.onload = function(event) {
-            uploadedFiles.push({
-                name: file.name,
-                size: file.size,
-                type: file.type,
-                data: event.target.result
-            });
-            
+            uploadedFiles.push({ name: file.name, size: file.size, type: file.type, data: event.target.result });
             const fileItem = document.createElement('div');
             fileItem.className = 'file-item';
             fileItem.innerHTML = `
@@ -350,149 +350,102 @@ let isSubmitting = false;
 
 document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
     if (isSubmitting) return;
     isSubmitting = true;
-    
     const submitBtn = e.target.querySelector('.button-submit');
     const originalText = submitBtn.textContent;
     submitBtn.textContent = '⏳ Envoi en cours...';
     submitBtn.disabled = true;
-    
     try {
         if (!webhookConfig) {
-            let encryptedCode = localStorage.getItem('pending_code');
-            encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
-            
+            let encryptedCode = localStorage.getItem('pending_code').replace(/-/g, '+').replace(/_/g, '/');
             const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
             const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
-            
             if (!decryptedData) throw new Error("Décryptage échoué");
-            
             webhookConfig = JSON.parse(decryptedData);
         }
-        
         const webhookUrl = webhookConfig.webhookUrl;
         const pingType = webhookConfig.ping || 'none';
-        
         if (!webhookUrl.startsWith("http")) throw new Error("URL invalide");
-        
         const formData = new FormData(e.target);
         const user = window.discordUser;
-        
         if (!document.getElementById('accept_terms').checked) {
-            alert("❌ Vous devez accepter le protocole de confidentialité pour continuer.");
+            alert("❌ Vous devez accepter le protocole de confidentialité.");
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
             isSubmitting = false;
             return;
         }
-        
         let pingContent = '';
         if (pingType === 'everyone') pingContent = '@everyone';
         else if (pingType === 'here') pingContent = '@here';
-        
         let fields = [];
-        
         if (webhookConfig.customForm) {
             webhookConfig.customForm.questions.forEach((q, index) => {
                 const fieldName = `custom_field_${index}`;
                 let value = formData.get(fieldName) || '_Non fourni_';
-                
                 if (q.type === 'checkbox') {
                     const checked = formData.getAll(`${fieldName}[]`);
                     value = checked.length > 0 ? checked.join(', ') : '_Aucune sélection_';
                 }
-                
-                fields.push({
-                    name: q.label,
-                    value: value.substring(0, 1024),
-                    inline: false
-                });
+                fields.push({ name: q.label, value: value.substring(0, 1024), inline: false });
             });
         } else {
             fields = [
                 { name: "📅 Date de la sanction", value: formData.get("date_blacklist") || "Non renseignée", inline: true },
                 { name: "❓ Raison connue", value: formData.get("reason_known"), inline: true },
                 { name: "\u200b", value: "\u200b", inline: false },
-                { name: "📝 Explication de la raison", value: (formData.get("reason_explanation") || formData.get("reason_unknown") || "_Aucune explication fournie_").substring(0, 1024) },
-                { name: "⚖️ Position sur la décision", value: `**${formData.get("agreement")}**\n${formData.get("agreement_desc").substring(0, 900)}` },
-                { name: "🏳️ Reconnaissance des faits", value: `**${formData.get("admission")}**\n${formData.get("admission_desc").substring(0, 900)}` },
-                { name: "🔧 Analyse et prise de recul", value: formData.get("analysis").substring(0, 1024) },
-                { name: "✨ Motivation pour la levée de sanction", value: formData.get("motivation").substring(0, 1024) }
+                { name: "📝 Explication", value: (formData.get("reason_explanation") || formData.get("reason_unknown") || "_Aucune_").substring(0, 1024) },
+                { name: "⚖️ Position", value: `**${formData.get("agreement")}**\n${formData.get("agreement_desc").substring(0, 900)}` },
+                { name: "🏳️ Reconnaissance", value: `**${formData.get("admission")}**\n${formData.get("admission_desc").substring(0, 900)}` },
+                { name: "🔧 Analyse", value: formData.get("analysis").substring(0, 1024) },
+                { name: "✨ Motivation", value: formData.get("motivation").substring(0, 1024) }
             ];
-            
-            if (formData.get("extras")) {
-                fields.push({ name: "💬 Informations complémentaires", value: formData.get("extras").substring(0, 1024) });
-            }
+            if (formData.get("extras")) fields.push({ name: "💬 Infos supplémentaires", value: formData.get("extras").substring(0, 1024) });
         }
-        
         if (uploadedFiles.length > 0) {
             const fileNames = uploadedFiles.map(f => `📄 ${f.name}`).join('\n');
             fields.push({ name: "📎 Pièces jointes", value: fileNames.substring(0, 1024) });
         }
-        
         const mainEmbed = {
             title: "📨 Nouvelle demande de révision de sanction",
             description: `**Utilisateur :** ${user.username} (\`${user.id}\`)`,
             color: 0x6366f1,
-            thumbnail: { 
-                url: user.avatar 
-                    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
-                    : `https://cdn.discordapp.com/embed/avatars/0.png`
-            },
+            thumbnail: { url: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : `https://cdn.discordapp.com/embed/avatars/0.png` },
             fields: fields,
-            footer: { text: "Système de révision Chell" },
+            footer: { text: "Système Chell" },
             timestamp: new Date().toISOString()
         };
-        
-        const payload = {
-            content: pingContent,
-            embeds: [mainEmbed]
-        };
-        
         const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ content: pingContent, embeds: [mainEmbed] })
         });
-        
-        if (!response.ok) {
-            throw new Error('Erreur webhook');
-        }
-        
+        if (!response.ok) throw new Error('Erreur webhook');
         for (const file of uploadedFiles) {
             const formDataFile = new FormData();
             const blob = await fetch(file.data).then(r => r.blob());
             formDataFile.append('files[0]', blob, file.name);
             formDataFile.append('content', `📎 Pièce jointe de **${user.username}**`);
-            
-            await fetch(webhookUrl, {
-                method: "POST",
-                body: formDataFile
-            });
+            await fetch(webhookUrl, { method: "POST", body: formDataFile });
         }
-        
-        // FIX: Incrémenter tentatives via API bot
         try {
-            await fetch(`${BOT_API_URL}/api/increment-attempt`, {
+            await fetch(`http://${BOT_API_URL}/api/increment-attempt`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: user.id })
             });
-            console.log('✅ Tentative incrémentée côté bot');
+            console.log('✅ Tentative incrémentée');
         } catch (err) {
-            console.warn('⚠️ Impossible d\'incrémenter tentatives:', err);
+            console.warn('⚠️ Impossible d\'incrémenter');
         }
-        
-        alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
+        alert("✅ Demande envoyée avec succès !");
         localStorage.removeItem('pending_code');
         localStorage.removeItem('discord_token');
         window.location.href = "https://discord.gg/f5HpfrvWXx";
-        
     } catch (err) {
-        console.error('❌ Erreur envoi:', err);
-        alert("❌ Erreur lors de l'envoi\n\n" + err.message + "\n\nVérifiez votre connexion ou générez un nouveau lien avec /appel.");
+        console.error('❌ Erreur:', err);
+        alert("❌ Erreur lors de l'envoi\n\n" + err.message);
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         isSubmitting = false;
