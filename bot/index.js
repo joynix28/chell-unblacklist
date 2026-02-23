@@ -10,7 +10,7 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const SECRET_KEY = process.env.SECRET_KEY || 'CHELL_SECURITY_KEY_2026_ULTRA_SECURE';
 const SITE_URL = process.env.SITE_URL || 'https://joynix28.github.io/chell-unblacklist';
-const API_PORT = process.env.API_PORT || 3000;
+const API_PORT = process.env.API_PORT || 2835;
 
 const client = new Client({ 
     intents: [
