@@ -219,13 +219,21 @@ async function handleCommands(interaction) {
             return interaction.reply({ content: '❌ Impossible de créer un webhook.', ephemeral: true });
         }
 
+        // FIX: Inclure les questions du formulaire perso dans le lien
+        let customFormData = null;
+        if (formName && customForms[formName]) {
+            customFormData = customForms[formName];
+            console.log(`📝 Formulaire personnalisé "${formName}" sélectionné`);
+        }
+
         const dataToEncrypt = JSON.stringify({
             webhookUrl: webhook.url,
             ping: pingOption,
-            formName: formName || 'default'
+            formName: formName || 'default',
+            customForm: customFormData // NOUVEAU: inclure les questions
         });
         
-        console.log('🔐 Données à crypter:', dataToEncrypt.substring(0, 100));
+        console.log('🔐 Données à crypter:', dataToEncrypt.substring(0, 150));
         console.log('🔑 Clé utilisée:', SECRET_KEY);
         
         const encryptedData = CryptoJS.AES.encrypt(dataToEncrypt, SECRET_KEY).toString();
@@ -252,7 +260,7 @@ async function handleCommands(interaction) {
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
-        console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name} (ping: ${pingOption})`);
+        console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name} (formulaire: ${formName || 'default'})`);
     }
     
     else if (commandName === 'autoriser') {
@@ -453,6 +461,8 @@ async function handleCommands(interaction) {
         await interaction.reply({ content: `✅ Formulaire "${formName}" supprimé.`, ephemeral: true });
     }
 }
+
+// ... (Reste du code IDENTIQUE - startFormBuilder, handleButtons, handleFormBuilder, handleSelectMenus, handleModals)
 
 async function startFormBuilder(interaction) {
     const userId = interaction.user.id;
