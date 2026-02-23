@@ -24,31 +24,45 @@ const client = new Client({
 const DB_FILE = path.join(__dirname, 'appeals_db.json');
 const FORMS_FILE = path.join(__dirname, 'custom_forms.json');
 const HISTORY_FILE = path.join(__dirname, 'appeals_history.json');
+const BLACKLIST_FILE = path.join(__dirname, 'blacklisted_webhooks.json');
 
 let appealsDB = {};
 let customForms = {};
 let historyDB = {};
 let formBuilderSessions = {};
+let blacklistedWebhooks = {};
 
 if (fs.existsSync(DB_FILE)) appealsDB = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 if (fs.existsSync(FORMS_FILE)) customForms = JSON.parse(fs.readFileSync(FORMS_FILE, 'utf8'));
 if (fs.existsSync(HISTORY_FILE)) historyDB = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+if (fs.existsSync(BLACKLIST_FILE)) blacklistedWebhooks = JSON.parse(fs.readFileSync(BLACKLIST_FILE, 'utf8'));
 
 function saveDB() {
     fs.writeFileSync(DB_FILE, JSON.stringify(appealsDB, null, 2));
     fs.writeFileSync(FORMS_FILE, JSON.stringify(customForms, null, 2));
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyDB, null, 2));
+    fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(blacklistedWebhooks, null, 2));
 }
 
-// API EXPRESS pour vérification en temps réel
+// API EXPRESS
 const app = express();
-app.use(cors()); // Autoriser CORS pour GitHub Pages
+app.use(cors());
 app.use(express.json());
 
-// Endpoint pour vérifier les tentatives d'un user
+// Check si webhook blacklisté
+app.get('/api/check-webhook/:webhookId', (req, res) => {
+    const { webhookId } = req.params;
+    const isBlacklisted = blacklistedWebhooks[webhookId] !== undefined;
+    
+    res.json({
+        webhookId,
+        blacklisted: isBlacklisted,
+        reason: isBlacklisted ? blacklistedWebhooks[webhookId].reason : null
+    });
+});
+
 app.get('/api/check-attempts/:userId', (req, res) => {
     const { userId } = req.params;
-    
     const data = appealsDB[userId] || { attempts: 0, maxAttempts: 1 };
     
     console.log(`🔍 Check tentatives pour ${userId}: ${data.attempts}/${data.maxAttempts}`);
@@ -62,7 +76,6 @@ app.get('/api/check-attempts/:userId', (req, res) => {
     });
 });
 
-// Endpoint pour incrémenter tentatives après soumission
 app.post('/api/increment-attempt', (req, res) => {
     const { userId } = req.body;
     
@@ -111,6 +124,32 @@ const commands = [
         .addStringOption(option =>
             option.setName('formulaire')
                 .setDescription('Formulaire personnalisé à utiliser (laisser vide pour le formulaire par défaut)')),
+    
+    new SlashCommandBuilder()
+        .setName('desactiver-lien')
+        .setDescription('Désactive définitivement un lien de formulaire (le rend inutilisable)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(option =>
+            option.setName('lien')
+                .setDescription('Lien complet du formulaire à désactiver')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('raison')
+                .setDescription('Raison de la désactivation')),
+    
+    new SlashCommandBuilder()
+        .setName('liens-desactives')
+        .setDescription('Liste tous les liens désactivés')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    new SlashCommandBuilder()
+        .setName('reactiver-lien')
+        .setDescription('Réactive un lien précédemment désactivé')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(option =>
+            option.setName('webhook_id')
+                .setDescription('ID du webhook à réactiver (voir /liens-desactives)')
+                .setRequired(true)),
     
     new SlashCommandBuilder()
         .setName('autoriser')
@@ -230,6 +269,7 @@ client.once('ready', () => {
     console.log(`🔑 SECRET_KEY: ${SECRET_KEY.substring(0, 20)}...`);
     console.log(`📊 Appels enregistrés: ${Object.keys(appealsDB).length}`);
     console.log(`📝 Formulaires personnalisés: ${Object.keys(customForms).length}`);
+    console.log(`🚫 Liens désactivés: ${Object.keys(blacklistedWebhooks).length}`);
     console.log(`\n🛠️ Commandes disponibles: ${commands.length}`);
     console.log('✅ Prêt à recevoir des commandes !\n');
 });
@@ -303,13 +343,115 @@ async function handleCommands(interaction) {
                 { name: '🔔 Ping', value: pingOption === 'everyone' ? '@everyone' : pingOption === 'here' ? '@here' : 'Aucun', inline: true },
                 { name: '📝 Formulaire', value: formName || 'Par défaut', inline: true },
                 { name: '🔗 Lien sécurisé', value: `[Cliquez ici pour accéder au formulaire](${finalLink})` },
-                { name: '📋 Instructions', value: `Le bot vérifiera automatiquement le quota de tentatives à la connexion Discord.` }
+                { name: '⚠️ Désactivation', value: `Pour rendre ce lien inutilisable, utilisez \`/desactiver-lien\`` }
             )
             .setFooter({ text: 'Système Chell • Lien crypté AES-256' })
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
         console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name}`);
+    }
+    
+    else if (commandName === 'desactiver-lien') {
+        const link = interaction.options.getString('lien');
+        const reason = interaction.options.getString('raison') || 'Aucune raison spécifiée';
+        
+        try {
+            // Extraire le code crypté du lien
+            const codeMatch = link.match(/[?&]code=([^&]+)/);
+            if (!codeMatch) {
+                return interaction.reply({ content: '❌ Lien invalide. Format attendu : `.../?code=...`', ephemeral: true });
+            }
+            
+            const encryptedCode = codeMatch[1].replace(/-/g, '+').replace(/_/g, '/');
+            
+            // Décrypter pour obtenir le webhook
+            const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
+            const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+            
+            if (!decryptedData) {
+                return interaction.reply({ content: '❌ Impossible de décrypter le lien.', ephemeral: true });
+            }
+            
+            const config = JSON.parse(decryptedData);
+            const webhookUrl = config.webhookUrl;
+            
+            // Extraire l'ID du webhook de l'URL
+            const webhookIdMatch = webhookUrl.match(/webhooks\/(\d+)/);
+            if (!webhookIdMatch) {
+                return interaction.reply({ content: '❌ Webhook invalide.', ephemeral: true });
+            }
+            
+            const webhookId = webhookIdMatch[1];
+            
+            // Blacklist le webhook
+            blacklistedWebhooks[webhookId] = {
+                webhookUrl,
+                reason,
+                disabledBy: interaction.user.id,
+                disabledAt: Date.now(),
+                originalLink: link
+            };
+            saveDB();
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🚫 Lien désactivé')
+                .setDescription(`Le lien a été définitivement désactivé. Toute tentative d'accès sera bloquée.`)
+                .setColor(0xd4351c)
+                .addFields(
+                    { name: 'Webhook ID', value: `\`${webhookId}\``, inline: true },
+                    { name: 'Raison', value: reason, inline: false }
+                )
+                .setFooter({ text: `Par ${interaction.user.username}` })
+                .setTimestamp();
+            
+            await interaction.reply({ embeds: [embed] });
+            console.log(`🚫 Lien désactivé par ${interaction.user.tag}: ${webhookId}`);
+            
+        } catch (error) {
+            console.error('❌ Erreur désactivation:', error);
+            return interaction.reply({ content: '❌ Erreur lors de la désactivation du lien.', ephemeral: true });
+        }
+    }
+    
+    else if (commandName === 'liens-desactives') {
+        const blacklist = Object.entries(blacklistedWebhooks);
+        
+        if (blacklist.length === 0) {
+            return interaction.reply({ content: '✅ Aucun lien désactivé.', ephemeral: true });
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🚫 Liens désactivés')
+            .setDescription(blacklist.map(([id, data]) => {
+                const disabledBy = client.users.cache.get(data.disabledBy);
+                return `**ID:** \`${id}\`\n**Raison:** ${data.reason}\n**Par:** ${disabledBy ? disabledBy.username : 'Inconnu'}\n**Date:** <t:${Math.floor(data.disabledAt / 1000)}:R>`;
+            }).join('\n\n'))
+            .setColor(0xd4351c)
+            .setFooter({ text: `Total: ${blacklist.length}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    else if (commandName === 'reactiver-lien') {
+        const webhookId = interaction.options.getString('webhook_id');
+        
+        if (!blacklistedWebhooks[webhookId]) {
+            return interaction.reply({ content: '❌ Ce webhook n\'est pas désactivé.', ephemeral: true });
+        }
+        
+        delete blacklistedWebhooks[webhookId];
+        saveDB();
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Lien réactivé')
+            .setDescription(`Le webhook \`${webhookId}\` a été réactivé.`)
+            .setColor(0x00703c)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
+        console.log(`✅ Webhook ${webhookId} réactivé par ${interaction.user.tag}`);
     }
     
     else if (commandName === 'autoriser') {
@@ -511,10 +653,9 @@ async function handleCommands(interaction) {
     }
 }
 
-// Reste du code identique pour form builder
+// Reste du code form builder identique...
 async function startFormBuilder(interaction) {
     const userId = interaction.user.id;
-    
     formBuilderSessions[userId] = {
         name: '',
         questions: [],
@@ -522,7 +663,6 @@ async function startFormBuilder(interaction) {
         maxFiles: 3,
         currentStep: 'name'
     };
-    
     const embed = new EmbedBuilder()
         .setTitle('🎨 Créateur de formulaire personnalisé')
         .setDescription('Bienvenue dans le créateur de formulaire interactif !\n\nVous pouvez créer un formulaire avec jusqu\'\u00e0 **10 questions** personnalisées.')
@@ -532,231 +672,89 @@ async function startFormBuilder(interaction) {
             { name: '🎨 Personnalisation', value: 'Couleurs, nombre de fichiers max, etc.' }
         )
         .setFooter({ text: 'Cliquez sur "Commencer" pour démarrer' });
-    
-    const button = new ButtonBuilder()
-        .setCustomId(`form_builder_start_${userId}`)
-        .setLabel('Commencer')
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji('🚀');
-    
+    const button = new ButtonBuilder().setCustomId(`form_builder_start_${userId}`).setLabel('Commencer').setStyle(ButtonStyle.Primary).setEmoji('🚀');
     const row = new ActionRowBuilder().addComponents(button);
-    
     await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 }
 
 async function handleButtons(interaction) {
     const [action, ...params] = interaction.customId.split('_');
-    
-    if (action === 'form' && params[0] === 'builder') {
-        await handleFormBuilder(interaction, params);
-    }
+    if (action === 'form' && params[0] === 'builder') await handleFormBuilder(interaction, params);
 }
 
 async function handleFormBuilder(interaction, params) {
     const userId = interaction.user.id;
     const session = formBuilderSessions[userId];
-    
-    if (!session) {
-        return interaction.reply({ content: '❌ Session expirée. Relancez `/creer-formulaire`.', ephemeral: true });
-    }
-    
+    if (!session) return interaction.reply({ content: '❌ Session expirée. Relancez `/creer-formulaire`.', ephemeral: true });
     if (params[1] === 'start') {
-        const modal = new ModalBuilder()
-            .setCustomId(`form_name_${userId}`)
-            .setTitle('Nom du formulaire');
-        
-        const nameInput = new TextInputBuilder()
-            .setCustomId('form_name')
-            .setLabel('Nom du formulaire')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Ex: Appel Staff, Candidature Mod...')
-            .setRequired(true)
-            .setMaxLength(50);
-        
+        const modal = new ModalBuilder().setCustomId(`form_name_${userId}`).setTitle('Nom du formulaire');
+        const nameInput = new TextInputBuilder().setCustomId('form_name').setLabel('Nom du formulaire').setStyle(TextInputStyle.Short).setPlaceholder('Ex: Appel Staff').setRequired(true).setMaxLength(50);
         modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
         await interaction.showModal(modal);
-    }
-    else if (params[1] === 'addquestion') {
-        if (session.questions.length >= 10) {
-            return interaction.reply({ content: '❌ Limite de 10 questions atteinte.', ephemeral: true });
-        }
-        
-        const embed = new EmbedBuilder()
-            .setTitle(`📝 Question ${session.questions.length + 1}/10`)
-            .setDescription('Quel type de champ souhaitez-vous ajouter ?')
-            .setColor(0x6366f1);
-        
-        const menu = new StringSelectMenuBuilder()
-            .setCustomId(`form_questiontype_${userId}`)
-            .setPlaceholder('Sélectionnez un type de champ')
-            .addOptions([
-                { label: 'Texte court', description: 'Une ligne de texte', value: 'short_text', emoji: '📝' },
-                { label: 'Texte long', description: 'Paragraphe', value: 'long_text', emoji: '📄' },
-                { label: 'Choix multiple', description: 'Cases à cocher', value: 'checkbox', emoji: '☑️' },
-                { label: 'Sélection unique', description: 'Liste déroulante', value: 'select', emoji: '🔽' },
-                { label: 'Upload fichier', description: 'Pièces jointes', value: 'file', emoji: '📎' }
-            ]);
-        
+    } else if (params[1] === 'addquestion') {
+        if (session.questions.length >= 10) return interaction.reply({ content: '❌ Limite de 10 questions atteinte.', ephemeral: true });
+        const embed = new EmbedBuilder().setTitle(`📝 Question ${session.questions.length + 1}/10`).setDescription('Quel type de champ souhaitez-vous ajouter ?').setColor(0x6366f1);
+        const menu = new StringSelectMenuBuilder().setCustomId(`form_questiontype_${userId}`).setPlaceholder('Sélectionnez un type').addOptions([
+            { label: 'Texte court', value: 'short_text', emoji: '📝' },
+            { label: 'Texte long', value: 'long_text', emoji: '📄' },
+            { label: 'Choix multiple', value: 'checkbox', emoji: '☑️' },
+            { label: 'Sélection unique', value: 'select', emoji: '🔽' },
+            { label: 'Upload fichier', value: 'file', emoji: '📎' }
+        ]);
         const row = new ActionRowBuilder().addComponents(menu);
         await interaction.update({ embeds: [embed], components: [row] });
-    }
-    else if (params[1] === 'theme') {
-        const modal = new ModalBuilder()
-            .setCustomId(`form_theme_${userId}`)
-            .setTitle('Personnalisation du thème');
-        
-        const colorInput = new TextInputBuilder()
-            .setCustomId('theme_color')
-            .setLabel('Couleur principale (hex)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('#6366f1')
-            .setValue(session.theme.color)
-            .setRequired(true);
-        
-        const btnInput = new TextInputBuilder()
-            .setCustomId('button_color')
-            .setLabel('Couleur des boutons (hex)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('#00703c')
-            .setValue(session.theme.buttonColor)
-            .setRequired(true);
-        
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(colorInput),
-            new ActionRowBuilder().addComponents(btnInput)
-        );
-        
-        await interaction.showModal(modal);
-    }
-    else if (params[1] === 'finish') {
-        if (session.questions.length === 0) {
-            return interaction.reply({ content: '❌ Ajoutez au moins une question.', ephemeral: true });
-        }
-        
-        customForms[session.name] = {
-            questions: session.questions,
-            theme: session.theme,
-            maxFiles: session.maxFiles,
-            createdBy: userId,
-            createdAt: Date.now()
-        };
+    } else if (params[1] === 'finish') {
+        if (session.questions.length === 0) return interaction.reply({ content: '❌ Ajoutez au moins une question.', ephemeral: true });
+        customForms[session.name] = { questions: session.questions, theme: session.theme, maxFiles: session.maxFiles, createdBy: userId, createdAt: Date.now() };
         saveDB();
-        
         delete formBuilderSessions[userId];
-        
-        const embed = new EmbedBuilder()
-            .setTitle('✅ Formulaire créé avec succès !')
-            .setDescription(`Le formulaire **${session.name}** a été créé.\n\nUtilisez-le avec:\n\`\`\`/appel formulaire:${session.name}\`\`\``)
-            .setColor(0x00703c)
-            .setTimestamp();
-        
+        const embed = new EmbedBuilder().setTitle('✅ Formulaire créé avec succès !').setDescription(`Le formulaire **${session.name}** a été créé.\n\nUtilisez-le avec:\n\`\`\`/appel formulaire:${session.name}\`\`\``).setColor(0x00703c).setTimestamp();
         await interaction.update({ embeds: [embed], components: [] });
     }
 }
 
 async function handleSelectMenus(interaction) {
     const [action, type, userId] = interaction.customId.split('_');
-    
     if (action === 'form' && type === 'questiontype') {
         const session = formBuilderSessions[userId];
         const fieldType = interaction.values[0];
-        
         session.currentQuestionType = fieldType;
-        
-        const modal = new ModalBuilder()
-            .setCustomId(`form_question_${userId}`)
-            .setTitle(`Question ${session.questions.length + 1}`);
-        
-        const labelInput = new TextInputBuilder()
-            .setCustomId('question_label')
-            .setLabel('Texte de la question')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Ex: Pourquoi voulez-vous rejoindre ?')
-            .setRequired(true);
-        
-        const requiredInput = new TextInputBuilder()
-            .setCustomId('question_required')
-            .setLabel('Obligatoire ? (oui/non)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('oui')
-            .setValue('oui')
-            .setRequired(true);
-        
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(labelInput),
-            new ActionRowBuilder().addComponents(requiredInput)
-        );
-        
+        const modal = new ModalBuilder().setCustomId(`form_question_${userId}`).setTitle(`Question ${session.questions.length + 1}`);
+        const labelInput = new TextInputBuilder().setCustomId('question_label').setLabel('Texte de la question').setStyle(TextInputStyle.Short).setPlaceholder('Ex: Pourquoi voulez-vous rejoindre ?').setRequired(true);
+        const requiredInput = new TextInputBuilder().setCustomId('question_required').setLabel('Obligatoire ? (oui/non)').setStyle(TextInputStyle.Short).setPlaceholder('oui').setValue('oui').setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(labelInput), new ActionRowBuilder().addComponents(requiredInput));
         if (fieldType === 'checkbox' || fieldType === 'select') {
-            const optionsInput = new TextInputBuilder()
-                .setCustomId('question_options')
-                .setLabel('Options (séparées par des virgules)')
-                .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder('Option 1, Option 2, Option 3')
-                .setRequired(true);
-            
+            const optionsInput = new TextInputBuilder().setCustomId('question_options').setLabel('Options (séparées par des virgules)').setStyle(TextInputStyle.Paragraph).setPlaceholder('Option 1, Option 2, Option 3').setRequired(true);
             modal.addComponents(new ActionRowBuilder().addComponents(optionsInput));
         }
-        
         await interaction.showModal(modal);
     }
 }
 
 async function handleModals(interaction) {
     const [action, type, userId] = interaction.customId.split('_');
-    
     if (action === 'form') {
         const session = formBuilderSessions[userId];
-        
         if (type === 'name') {
             session.name = interaction.fields.getTextInputValue('form_name');
             session.currentStep = 'questions';
-            
-            const embed = new EmbedBuilder()
-                .setTitle(`📝 Formulaire: ${session.name}`)
-                .setDescription('Questions: 0/10\n\nCliquez sur "Ajouter une question" pour commencer.')
-                .setColor(0x6366f1);
-            
+            const embed = new EmbedBuilder().setTitle(`📝 Formulaire: ${session.name}`).setDescription('Questions: 0/10\n\nCliquez sur "Ajouter une question" pour commencer.').setColor(0x6366f1);
             const buttons = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`form_builder_addquestion_${userId}`).setLabel('Ajouter une question').setStyle(ButtonStyle.Primary).setEmoji('➕'),
-                new ButtonBuilder().setCustomId(`form_builder_theme_${userId}`).setLabel('Personnaliser').setStyle(ButtonStyle.Secondary).setEmoji('🎨'),
                 new ButtonBuilder().setCustomId(`form_builder_finish_${userId}`).setLabel('Terminer').setStyle(ButtonStyle.Success).setEmoji('✅')
             );
-            
             await interaction.reply({ embeds: [embed], components: [buttons], ephemeral: true });
-        }
-        else if (type === 'question') {
+        } else if (type === 'question') {
             const label = interaction.fields.getTextInputValue('question_label');
             const required = interaction.fields.getTextInputValue('question_required').toLowerCase() === 'oui';
-            const options = interaction.fields.fields.has('question_options') 
-                ? interaction.fields.getTextInputValue('question_options').split(',').map(o => o.trim())
-                : [];
-            
-            session.questions.push({
-                type: session.currentQuestionType,
-                label,
-                required,
-                options
-            });
-            
-            const embed = new EmbedBuilder()
-                .setTitle(`📝 Formulaire: ${session.name}`)
-                .setDescription(`Questions: ${session.questions.length}/10\n\n**Dernière question ajoutée:**\n${label}`)
-                .setColor(0x6366f1);
-            
+            const options = interaction.fields.fields.has('question_options') ? interaction.fields.getTextInputValue('question_options').split(',').map(o => o.trim()) : [];
+            session.questions.push({ type: session.currentQuestionType, label, required, options });
+            const embed = new EmbedBuilder().setTitle(`📝 Formulaire: ${session.name}`).setDescription(`Questions: ${session.questions.length}/10\n\n**Dernière question ajoutée:**\n${label}`).setColor(0x6366f1);
             const buttons = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`form_builder_addquestion_${userId}`).setLabel('Ajouter une question').setStyle(ButtonStyle.Primary).setEmoji('➕').setDisabled(session.questions.length >= 10),
-                new ButtonBuilder().setCustomId(`form_builder_theme_${userId}`).setLabel('Personnaliser').setStyle(ButtonStyle.Secondary).setEmoji('🎨'),
                 new ButtonBuilder().setCustomId(`form_builder_finish_${userId}`).setLabel('Terminer').setStyle(ButtonStyle.Success).setEmoji('✅')
             );
-            
             await interaction.update({ embeds: [embed], components: [buttons] });
-        }
-        else if (type === 'theme') {
-            session.theme.color = interaction.fields.getTextInputValue('theme_color');
-            session.theme.buttonColor = interaction.fields.getTextInputValue('button_color');
-            
-            await interaction.reply({ content: '✅ Thème personnalisé sauvegardé !', ephemeral: true });
         }
     }
 }
