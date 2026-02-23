@@ -9,6 +9,56 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
 <body>
+    <!-- Modal Confidentialité -->
+    <div class="modal-overlay" id="privacyModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closePrivacyModal()">&times;</button>
+            <div class="modal-body">
+                <h2>📜 Protocole de Confidentialité ChellOS</h2>
+                <p class="disclaimer">ChellOS est fourni tel quel (<em>as-is</em>). L'utilisation de ce bot implique la lecture et l'acceptation de ce protocole, sans qu'aucune garantie supplémentaire ne soit fournie. Les données et interactions peuvent être collectées et traitées selon les termes ci-dessous, dans le respect des lois françaises et du RGPD.</p>
+                
+                <h3>📌 Engagements et Transparence</h3>
+                <ul>
+                    <li><strong>Collecte minimale :</strong> ChellOS collecte uniquement les données techniques ou identifiants Discord nécessaires à son fonctionnement.</li>
+                    <li><strong>Finalité :</strong> Les informations collectées sont utilisées pour la <strong>sécurité des serveurs, la prévention des abus et l'amélioration des services.</strong></li>
+                    <li><strong>Consentement :</strong> L'utilisation de ChellOS ou sa présence sur un serveur vaut acceptation de ce protocole.</li>
+                </ul>
+
+                <h3>🛡️ Modération et Blacklist Globale</h3>
+                <ul>
+                    <li><strong>Identifiants Discord :</strong> Votre ID et Tag peuvent être stockés de manière pérenne en cas de <strong>signalement ou d'abus avéré.</strong></li>
+                    <li><strong>Preuves :</strong> Les captures, logs et motifs de sanctions sont conservés pour justifier l'application de mesures correctives.</li>
+                    <li><strong>Système de Blacklist :</strong> Les utilisateurs signalés peuvent être inscrits sur une <strong>Blacklist Globale</strong> pour protéger l'ensemble des serveurs. Toute contestation est possible via notre support.</li>
+                    <li><strong>Salon Chell-Updates :</strong> Ce canal permet la diffusion des mises à jour et la communication avec notre support. Sa suppression coupe cette liaison technique.</li>
+                </ul>
+
+                <h3>🧠 Intelligence Artificielle et Support</h3>
+                <ul>
+                    <li><strong>Analytique IA :</strong> Les interactions avec l'IA peuvent être auditées (30 jours max) conformément au RGPD pour amélioration et détection de contenus illicites. Vous pouvez effacer votre historique via <code>/clear-history</code>.</li>
+                    <li><strong>Support MP :</strong> Les messages privés envoyés au bot sont consultables par les propriétaires à des fins de support ou de sécurité.</li>
+                    <li><strong>Infrastructure :</strong> Nos serveurs sont localisés en <strong>France 🇫🇷</strong> et l'accès aux données est strictement restreint aux propriétaires du bot.</li>
+                </ul>
+
+                <h3>📝 Acceptation des Conditions</h3>
+                <ol>
+                    <li><strong>Nature du service :</strong> Chell est un bot <strong>gratuit</strong>, fourni sans garantie de résultat. L'utilisateur s'engage à ne pas effectuer d'abus ou d'actes malveillants.</li>
+                    <li><strong>Intervention :</strong> Les propriétaires se réservent un droit d'intervention en cas d'urgence technique ou d'abus majeur / vérification de routine, dans le respect des ToS de Discord.</li>
+                    <li><strong>Propriété :</strong> Toute reproduction ou modification du code, du logo ou de la marque sans autorisation est interdite.</li>
+                    <li><strong>Responsabilité :</strong> Les propriétaires ne sont pas responsables des pertes ou interruptions de service et de leurs conséquences sur votre serveur.</li>
+                    <li><strong>IA :</strong> En utilisant Chell, vous reconnaissez utiliser nos systèmes IA sans aucune finalité malveillante ou répréhensible / nuisant à la réputation que ce soit de Chell ou des membres en général. En utilisant Chell, vous reconnaissez que tout abus (Tentative de JailBreak, utilisation à des fins malveillantes, spam ou autre) ne sera pas sans conséquence. Vous pouvez être blacklisté de nos services pour cela. Enfin, en utilisant nos services IA, nos systèmes IA sont <strong>expérimentaux</strong> et donc par définition imparfaits. Chell ne se porte pas garante ou responsable en cas de réponses malveillantes ou inappropriées. <u>Vous reconnaissez utiliser Chell en pleine connaissance de cause et des risques possibles</u></li>
+                </ol>
+
+                <p class="footer-modal">Protocole v2025.12 • <a href="mailto:contact@chell.fr">contact@chell.fr</a><br>
+Dirigeants : <code>1385893817080615044</code>, <code>537225794372632576</code>, <code>1418645313215926523</code></p>
+
+                <p class="external-links">
+                    <a href="https://chell.fr/conditions" target="_blank">📄 Conditions d'utilisation complètes</a> •
+                    <a href="https://chell.fr/confidentialite" target="_blank">🔒 Politique de confidentialité</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- Header officiel -->
     <header class="chell-header">
         <div class="container">
@@ -54,7 +104,7 @@
 
                     <div class="inset-text">
                         <p><strong>Pourquoi cette étape ?</strong></p>
-                        <p>L'authentification garantit la sécurité de votre demande et permet de vérifier votre identité.</p>
+                        <p>L'authentification garantit la sécurité de votre demande et permet de vérifier votre identité. <strong>Une seule demande par utilisateur est autorisée.</strong></p>
                     </div>
 
                     <button onclick="loginDiscord()" class="button-start">
@@ -81,6 +131,16 @@
         <div class="container">
             <div class="grid-row">
                 <div class="grid-col-full">
+                    <!-- Privacy Notice Banner -->
+                    <div class="privacy-banner">
+                        <span class="privacy-icon">🔒</span>
+                        <div class="privacy-text">
+                            <strong>Confidentialité et données personnelles</strong>
+                            <p>Ce formulaire collecte vos informations Discord et vos réponses. En continuant, vous acceptez notre protocole de confidentialité.</p>
+                        </div>
+                        <button onclick="openPrivacyModal()" class="privacy-link">En savoir plus</button>
+                    </div>
+
                     <!-- User Info Card -->
                     <div class="user-card">
                         <img src="" alt="Avatar" id="user-avatar" class="user-avatar">
@@ -88,6 +148,7 @@
                             <h2 class="heading-m" id="user-name">Chargement...</h2>
                             <p class="user-status">
                                 <span class="status-badge status-warning">Dossier en cours</span>
+                                <span class="attempt-counter" id="attempt-counter"></span>
                             </p>
                         </div>
                     </div>
@@ -263,12 +324,23 @@
                             </div>
                         </fieldset>
 
+                        <!-- CGU Checkbox -->
+                        <div class="form-group">
+                            <div class="checkbox-wrapper">
+                                <input type="checkbox" id="accept_terms" name="accept_terms" class="form-checkbox" required>
+                                <label for="accept_terms" class="checkbox-label">
+                                    J'ai lu et j'accepte le <a href="https://chell.fr/conditions" target="_blank">protocole de confidentialité ChellOS</a> et les <a href="https://chell.fr/confidentialite" target="_blank">conditions d'utilisation</a>
+                                    <span class="form-required">(obligatoire)</span>
+                                </label>
+                            </div>
+                        </div>
+
                         <!-- Warning -->
                         <div class="warning-text">
                             <span class="warning-icon">⚠️</span>
                             <div>
                                 <strong>Avertissement</strong>
-                                <p>Toute fausse déclaration ou omission volontaire entraînera un rejet immédiat de votre demande.</p>
+                                <p>Toute fausse déclaration ou omission volontaire entraînera un rejet immédiat de votre demande. Une seule tentative est autorisée par utilisateur.</p>
                             </div>
                         </div>
 
@@ -285,7 +357,7 @@
     <!-- Footer -->
     <footer class="chell-footer">
         <div class="container">
-            <p class="footer-text">Système Chell &copy; 2026 • Service sécurisé</p>
+            <p class="footer-text">Système Chell © 2026 • Service sécurisé • <a href="https://chell.fr" target="_blank" style="color:white">chell.fr</a></p>
         </div>
     </footer>
 
