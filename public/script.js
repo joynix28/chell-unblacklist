@@ -42,7 +42,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function loginDiscord() {
     const encryptedCode = params.code || localStorage.getItem('pending_code');
     if (!encryptedCode) {
-        alert("❌ Lien invalide. Générez un lien avec la commande /appel sur le serveur Discord.");
+        alert("❌ Pour demander un Unblacklist , ouvre un ticket ici : https://discord.gg/f5HpfrvWXx ");
         return;
     }
     
