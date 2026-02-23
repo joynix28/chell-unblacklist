@@ -3,11 +3,14 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, Permission
 const CryptoJS = require('crypto-js');
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
+const cors = require('cors');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const SECRET_KEY = process.env.SECRET_KEY || 'CHELL_SECURITY_KEY_2026_ULTRA_SECURE';
 const SITE_URL = process.env.SITE_URL || 'https://joynix28.github.io/chell-unblacklist';
+const API_PORT = process.env.API_PORT || 3000;
 
 const client = new Client({ 
     intents: [
@@ -37,6 +40,57 @@ function saveDB() {
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyDB, null, 2));
 }
 
+// API EXPRESS pour vérification en temps réel
+const app = express();
+app.use(cors()); // Autoriser CORS pour GitHub Pages
+app.use(express.json());
+
+// Endpoint pour vérifier les tentatives d'un user
+app.get('/api/check-attempts/:userId', (req, res) => {
+    const { userId } = req.params;
+    
+    const data = appealsDB[userId] || { attempts: 0, maxAttempts: 1 };
+    
+    console.log(`🔍 Check tentatives pour ${userId}: ${data.attempts}/${data.maxAttempts}`);
+    
+    res.json({
+        userId,
+        attempts: data.attempts,
+        maxAttempts: data.maxAttempts,
+        allowed: data.attempts < data.maxAttempts,
+        remaining: data.maxAttempts - data.attempts
+    });
+});
+
+// Endpoint pour incrémenter tentatives après soumission
+app.post('/api/increment-attempt', (req, res) => {
+    const { userId } = req.body;
+    
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId' });
+    }
+    
+    if (!appealsDB[userId]) {
+        appealsDB[userId] = { attempts: 0, maxAttempts: 1, history: [] };
+    }
+    
+    appealsDB[userId].attempts += 1;
+    appealsDB[userId].lastAttempt = Date.now();
+    saveDB();
+    
+    console.log(`⬆️ Tentative incrémentée pour ${userId}: ${appealsDB[userId].attempts}/${appealsDB[userId].maxAttempts}`);
+    
+    res.json({ 
+        success: true, 
+        attempts: appealsDB[userId].attempts,
+        maxAttempts: appealsDB[userId].maxAttempts
+    });
+});
+
+app.listen(API_PORT, () => {
+    console.log(`🌐 API webhook écoute sur le port ${API_PORT}`);
+});
+
 const commands = [
     new SlashCommandBuilder()
         .setName('appel')
@@ -56,10 +110,7 @@ const commands = [
                 ))
         .addStringOption(option =>
             option.setName('formulaire')
-                .setDescription('Formulaire personnalisé à utiliser (laisser vide pour le formulaire par défaut)'))
-        .addUserOption(option =>
-            option.setName('utilisateur')
-                .setDescription('Utilisateur concerné (pour pré-remplir les infos de tentative)')),
+                .setDescription('Formulaire personnalisé à utiliser (laisser vide pour le formulaire par défaut)')),
     
     new SlashCommandBuilder()
         .setName('autoriser')
@@ -155,14 +206,6 @@ const commands = [
         .addStringOption(option =>
             option.setName('nom')
                 .setDescription('Nom du formulaire à supprimer')
-                .setRequired(true)),
-    
-    new SlashCommandBuilder()
-        .setName('check-limite')
-        .setDescription('Vérifie le statut de tentative d\'un utilisateur')
-        .addStringOption(option =>
-            option.setName('userid')
-                .setDescription('ID Discord de l\'utilisateur')
                 .setRequired(true))
 ];
 
@@ -185,7 +228,7 @@ client.once('ready', () => {
     console.log(`🎯 Serveurs: ${client.guilds.cache.size}`);
     console.log(`🔗 Site: ${SITE_URL}`);
     console.log(`🔑 SECRET_KEY: ${SECRET_KEY.substring(0, 20)}...`);
-    console.log(`📊 Appels: ${Object.keys(appealsDB).length}`);
+    console.log(`📊 Appels enregistrés: ${Object.keys(appealsDB).length}`);
     console.log(`📝 Formulaires personnalisés: ${Object.keys(customForms).length}`);
     console.log(`\n🛠️ Commandes disponibles: ${commands.length}`);
     console.log('✅ Prêt à recevoir des commandes !\n');
@@ -210,7 +253,6 @@ async function handleCommands(interaction) {
         const channel = interaction.options.getChannel('salon');
         const pingOption = interaction.options.getString('ping') || 'none';
         const formName = interaction.options.getString('formulaire');
-        const targetUser = interaction.options.getUser('utilisateur');
         
         if (!channel.isTextBased()) {
             return interaction.reply({ content: '❌ Ce salon n\'est pas un salon textuel.', ephemeral: true });
@@ -237,33 +279,17 @@ async function handleCommands(interaction) {
             console.log(`📝 Formulaire personnalisé "${formName}" sélectionné`);
         }
 
-        // FIX: Inclure userLimits dans le lien pour vérification côté front
-        let userLimits = null;
-        if (targetUser) {
-            const userData = appealsDB[targetUser.id] || { attempts: 0, maxAttempts: 1 };
-            userLimits = {
-                userId: targetUser.id,
-                attempts: userData.attempts,
-                maxAttempts: userData.maxAttempts
-            };
-        }
-
         const dataToEncrypt = JSON.stringify({
             webhookUrl: webhook.url,
             ping: pingOption,
             formName: formName || 'default',
-            customForm: customFormData,
-            userLimits: userLimits // NOUVEAU: infos de tentative
+            customForm: customFormData
         });
         
         console.log('🔐 Données à crypter:', dataToEncrypt.substring(0, 150));
-        console.log('🔑 Clé utilisée:', SECRET_KEY);
         
         const encryptedData = CryptoJS.AES.encrypt(dataToEncrypt, SECRET_KEY).toString();
-        console.log('🔒 Données cryptées (brut):', encryptedData.substring(0, 50));
-        
         const urlSafeEncrypted = encryptedData.replace(/\+/g, '-').replace(/\//g, '_');
-        console.log('🔧 Données URL-safe:', urlSafeEncrypted.substring(0, 50));
         
         const finalLink = `${SITE_URL}/?code=${urlSafeEncrypted}`;
         console.log('🔗 Lien final:', finalLink.length, 'caractères');
@@ -275,32 +301,15 @@ async function handleCommands(interaction) {
             .addFields(
                 { name: '📨 Salon', value: `<#${channel.id}>`, inline: true },
                 { name: '🔔 Ping', value: pingOption === 'everyone' ? '@everyone' : pingOption === 'here' ? '@here' : 'Aucun', inline: true },
-                { name: '📝 Formulaire', value: formName || 'Par défaut', inline: true }
-            );
-        
-        if (targetUser) {
-            embed.addFields({ name: '👤 Utilisateur', value: `${targetUser} (${userLimits.attempts}/${userLimits.maxAttempts} tentatives)`, inline: false });
-        }
-        
-        embed.addFields(
-            { name: '🔗 Lien sécurisé', value: `[Cliquez ici pour accéder au formulaire](${finalLink})` },
-            { name: '📋 Instructions', value: `Copiez ce lien et envoyez-le à l'utilisateur concerné. Le ping sera automatiquement ajouté lors de la réception de la demande.` }
-        );
-        
-        embed.setFooter({ text: 'Système Chell • Lien crypté AES-256' }).setTimestamp();
+                { name: '📝 Formulaire', value: formName || 'Par défaut', inline: true },
+                { name: '🔗 Lien sécurisé', value: `[Cliquez ici pour accéder au formulaire](${finalLink})` },
+                { name: '📋 Instructions', value: `Le bot vérifiera automatiquement le quota de tentatives à la connexion Discord.` }
+            )
+            .setFooter({ text: 'Système Chell • Lien crypté AES-256' })
+            .setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
-        console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name} (formulaire: ${formName || 'default'})`);
-    }
-    
-    else if (commandName === 'check-limite') {
-        const userId = interaction.options.getString('userid');
-        const data = appealsDB[userId] || { attempts: 0, maxAttempts: 1 };
-        
-        await interaction.reply({
-            content: `📊 **User ID:** \`${userId}\`\n**Tentatives:** ${data.attempts}/${data.maxAttempts}\n**Statut:** ${data.attempts >= data.maxAttempts ? '❌ Bloqué' : '✅ Autorisé'}`,
-            ephemeral: true
-        });
+        console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name}`);
     }
     
     else if (commandName === 'autoriser') {
@@ -480,7 +489,7 @@ async function handleCommands(interaction) {
             .setTitle('📝 Formulaires personnalisés')
             .setDescription(formsList.map((name, i) => {
                 const form = customForms[name];
-                return `**${i+1}. ${name}**\n└ ${form.questions.length} question(s) • Couleur: ${form.theme.color}`;
+                return `**${i+1}. ${name}**\n└ ${form.questions.length} question(s)`;
             }).join('\n\n'))
             .setColor(0x6366f1)
             .setTimestamp();
@@ -502,50 +511,7 @@ async function handleCommands(interaction) {
     }
 }
 
-// NOUVEAU: Endpoint webhook pour incrémenter tentatives
-const express = require('express');
-const app = express();
-app.use(express.json());
-
-app.post('/increment-attempt', (req, res) => {
-    const { userId, webhookUrl } = req.body;
-    
-    if (!userId || !webhookUrl) {
-        return res.status(400).json({ error: 'Missing userId or webhookUrl' });
-    }
-    
-    // Vérifier que le webhook correspond
-    let webhookMatch = false;
-    for (const [uid, data] of Object.entries(appealsDB)) {
-        if (data.webhookUrl === webhookUrl) {
-            webhookMatch = true;
-            break;
-        }
-    }
-    
-    if (!appealsDB[userId]) {
-        appealsDB[userId] = { attempts: 0, maxAttempts: 1, history: [] };
-    }
-    
-    appealsDB[userId].attempts += 1;
-    appealsDB[userId].lastAttempt = Date.now();
-    saveDB();
-    
-    console.log(`📊 Tentative incrémentée pour ${userId}: ${appealsDB[userId].attempts}/${appealsDB[userId].maxAttempts}`);
-    
-    res.json({ 
-        success: true, 
-        attempts: appealsDB[userId].attempts,
-        maxAttempts: appealsDB[userId].maxAttempts
-    });
-});
-
-app.listen(3000, () => {
-    console.log('🌐 Serveur webhook écoute sur le port 3000');
-});
-
-// Reste du code identique (startFormBuilder, handleButtons, handleFormBuilder, handleSelectMenus, handleModals)
-
+// Reste du code identique pour form builder
 async function startFormBuilder(interaction) {
     const userId = interaction.user.id;
     
@@ -562,8 +528,8 @@ async function startFormBuilder(interaction) {
         .setDescription('Bienvenue dans le créateur de formulaire interactif !\n\nVous pouvez créer un formulaire avec jusqu\'\u00e0 **10 questions** personnalisées.')
         .setColor(0x6366f1)
         .addFields(
-            { name: '📝 Types de champs disponibles', value: '• Texte court\n• Texte long\n• Choix multiple (cocher)\n• Sélection unique\n• Upload de fichiers' },
-            { name: '🎨 Personnalisation', value: 'Couleurs des boutons, nombre de fichiers max, etc.' }
+            { name: '📝 Types de champs disponibles', value: '• Texte court\n• Texte long\n• Choix multiple\n• Sélection unique\n• Upload de fichiers' },
+            { name: '🎨 Personnalisation', value: 'Couleurs, nombre de fichiers max, etc.' }
         )
         .setFooter({ text: 'Cliquez sur "Commencer" pour démarrer' });
     
