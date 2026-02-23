@@ -196,7 +196,7 @@ async function handleCommands(interaction) {
     
     if (commandName === 'appel') {
         const channel = interaction.options.getChannel('salon');
-        const pingOption = interaction.options.getString('ping') || 'everyone';
+        const pingOption = interaction.options.getString('ping') || 'none';
         const formName = interaction.options.getString('formulaire');
         
         if (!channel.isTextBased()) {
@@ -233,11 +233,14 @@ async function handleCommands(interaction) {
                 { name: '📨 Salon', value: `<#${channel.id}>`, inline: true },
                 { name: '🔔 Ping', value: pingOption === 'everyone' ? '@everyone' : pingOption === 'here' ? '@here' : 'Aucun', inline: true },
                 { name: '📝 Formulaire', value: formName || 'Par défaut', inline: true },
-                { name: '🔗 Lien sécurisé', value: `[Cliquez ici](${finalLink})` }
+                { name: '🔗 Lien sécurisé', value: `[Cliquez ici pour accéder au formulaire](${finalLink})` },
+                { name: '📋 Instructions', value: `Copiez ce lien et envoyez-le à l'utilisateur concerné. Le ping sera automatiquement ajouté lors de la réception de la demande.` }
             )
+            .setFooter({ text: 'Système Chell • Lien crypté AES-256' })
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
+        console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name} (ping: ${pingOption})`);
     }
     
     else if (commandName === 'autoriser') {
@@ -264,6 +267,7 @@ async function handleCommands(interaction) {
             .setTimestamp();
         
         await interaction.reply({ embeds: [embed] });
+        console.log(`✅ ${interaction.user.tag} a autorisé ${targetUser.tag} (+${additionalAttempts})`);
     }
     
     else if (commandName === 'statut-appel') {
@@ -312,6 +316,7 @@ async function handleCommands(interaction) {
             .setThumbnail(targetUser.displayAvatarURL())
             .setTimestamp();
         await interaction.reply({ embeds: [embed] });
+        console.log(`🔄 ${interaction.user.tag} a réinitialisé ${targetUser.tag}`);
     }
     
     else if (commandName === 'historique') {
@@ -388,7 +393,6 @@ async function handleCommands(interaction) {
     
     else if (commandName === 'auto-reset') {
         const days = interaction.options.getInteger('jours');
-        // Sauvegarder la configuration dans la DB
         const config = { autoReset: days > 0, days: days };
         fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(config, null, 2));
         
