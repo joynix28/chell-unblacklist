@@ -108,9 +108,9 @@ window.onload = async () => {
     }
 
     const token = localStorage.getItem('discord_token');
-    const encryptedCode = params.code || localStorage.getItem('pending_code');
+    let encryptedCode = params.code || localStorage.getItem('pending_code');
 
-    console.log('🔐 Code crypté:', encryptedCode ? 'Présent (' + encryptedCode.substring(0, 20) + '...)' : 'Absent');
+    console.log('🔐 Code crypté (brut):', encryptedCode ? encryptedCode.substring(0, 50) + '...' : 'Absent');
     console.log('🎫 Token Discord:', token ? 'Présent' : 'Absent');
 
     if (!encryptedCode) {
@@ -118,6 +118,10 @@ window.onload = async () => {
         document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>Utilisez la commande <code>/appel</code> sur le serveur pour générer un lien valide.</p></div>";
         return;
     }
+    
+    // FIX: Restaurer les caractères URL-safe
+    encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
+    console.log('🔧 Code restauré:', encryptedCode.substring(0, 50) + '...');
     
     if (params.code) localStorage.setItem('pending_code', params.code);
 
@@ -143,11 +147,11 @@ window.onload = async () => {
                 console.log('🔓 Tentative de décryptage...');
                 console.log('🔑 Clé utilisée:', SECRET_KEY);
                 
-                // FIX: PAS de decodeURIComponent ici, params.code est déjà décodé
                 const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
                 const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
                 
-                console.log('📝 Données décryptées (brut):', decryptedData.substring(0, 50));
+                console.log('📝 Longueur données décryptées:', decryptedData.length);
+                console.log('📝 Données décryptées:', decryptedData.substring(0, 100));
                 
                 if (!decryptedData || decryptedData === '') {
                     console.error('❌ Décryptage échoué - résultat vide');
@@ -303,9 +307,11 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         
         if (!webhookConfig) {
             console.log('⚙️ Webhook non configuré, décryptage...');
-            const encryptedCode = localStorage.getItem('pending_code');
+            let encryptedCode = localStorage.getItem('pending_code');
             
-            // FIX: PAS de decodeURIComponent ici non plus
+            // Restaurer caractères URL-safe
+            encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
+            
             const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
             const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
             
