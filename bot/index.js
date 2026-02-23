@@ -56,7 +56,10 @@ const commands = [
                 ))
         .addStringOption(option =>
             option.setName('formulaire')
-                .setDescription('Formulaire personnalisé à utiliser (laisser vide pour le formulaire par défaut)')),
+                .setDescription('Formulaire personnalisé à utiliser (laisser vide pour le formulaire par défaut)'))
+        .addUserOption(option =>
+            option.setName('utilisateur')
+                .setDescription('Utilisateur concerné (pour pré-remplir les infos de tentative)')),
     
     new SlashCommandBuilder()
         .setName('autoriser')
@@ -152,6 +155,14 @@ const commands = [
         .addStringOption(option =>
             option.setName('nom')
                 .setDescription('Nom du formulaire à supprimer')
+                .setRequired(true)),
+    
+    new SlashCommandBuilder()
+        .setName('check-limite')
+        .setDescription('Vérifie le statut de tentative d\'un utilisateur')
+        .addStringOption(option =>
+            option.setName('userid')
+                .setDescription('ID Discord de l\'utilisateur')
                 .setRequired(true))
 ];
 
@@ -199,6 +210,7 @@ async function handleCommands(interaction) {
         const channel = interaction.options.getChannel('salon');
         const pingOption = interaction.options.getString('ping') || 'none';
         const formName = interaction.options.getString('formulaire');
+        const targetUser = interaction.options.getUser('utilisateur');
         
         if (!channel.isTextBased()) {
             return interaction.reply({ content: '❌ Ce salon n\'est pas un salon textuel.', ephemeral: true });
@@ -219,18 +231,29 @@ async function handleCommands(interaction) {
             return interaction.reply({ content: '❌ Impossible de créer un webhook.', ephemeral: true });
         }
 
-        // FIX: Inclure les questions du formulaire perso dans le lien
         let customFormData = null;
         if (formName && customForms[formName]) {
             customFormData = customForms[formName];
             console.log(`📝 Formulaire personnalisé "${formName}" sélectionné`);
         }
 
+        // FIX: Inclure userLimits dans le lien pour vérification côté front
+        let userLimits = null;
+        if (targetUser) {
+            const userData = appealsDB[targetUser.id] || { attempts: 0, maxAttempts: 1 };
+            userLimits = {
+                userId: targetUser.id,
+                attempts: userData.attempts,
+                maxAttempts: userData.maxAttempts
+            };
+        }
+
         const dataToEncrypt = JSON.stringify({
             webhookUrl: webhook.url,
             ping: pingOption,
             formName: formName || 'default',
-            customForm: customFormData // NOUVEAU: inclure les questions
+            customForm: customFormData,
+            userLimits: userLimits // NOUVEAU: infos de tentative
         });
         
         console.log('🔐 Données à crypter:', dataToEncrypt.substring(0, 150));
@@ -252,15 +275,32 @@ async function handleCommands(interaction) {
             .addFields(
                 { name: '📨 Salon', value: `<#${channel.id}>`, inline: true },
                 { name: '🔔 Ping', value: pingOption === 'everyone' ? '@everyone' : pingOption === 'here' ? '@here' : 'Aucun', inline: true },
-                { name: '📝 Formulaire', value: formName || 'Par défaut', inline: true },
-                { name: '🔗 Lien sécurisé', value: `[Cliquez ici pour accéder au formulaire](${finalLink})` },
-                { name: '📋 Instructions', value: `Copiez ce lien et envoyez-le à l'utilisateur concerné. Le ping sera automatiquement ajouté lors de la réception de la demande.` }
-            )
-            .setFooter({ text: 'Système Chell • Lien crypté AES-256' })
-            .setTimestamp();
+                { name: '📝 Formulaire', value: formName || 'Par défaut', inline: true }
+            );
+        
+        if (targetUser) {
+            embed.addFields({ name: '👤 Utilisateur', value: `${targetUser} (${userLimits.attempts}/${userLimits.maxAttempts} tentatives)`, inline: false });
+        }
+        
+        embed.addFields(
+            { name: '🔗 Lien sécurisé', value: `[Cliquez ici pour accéder au formulaire](${finalLink})` },
+            { name: '📋 Instructions', value: `Copiez ce lien et envoyez-le à l'utilisateur concerné. Le ping sera automatiquement ajouté lors de la réception de la demande.` }
+        );
+        
+        embed.setFooter({ text: 'Système Chell • Lien crypté AES-256' }).setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
         console.log(`🔗 Lien généré par ${interaction.user.tag} pour #${channel.name} (formulaire: ${formName || 'default'})`);
+    }
+    
+    else if (commandName === 'check-limite') {
+        const userId = interaction.options.getString('userid');
+        const data = appealsDB[userId] || { attempts: 0, maxAttempts: 1 };
+        
+        await interaction.reply({
+            content: `📊 **User ID:** \`${userId}\`\n**Tentatives:** ${data.attempts}/${data.maxAttempts}\n**Statut:** ${data.attempts >= data.maxAttempts ? '❌ Bloqué' : '✅ Autorisé'}`,
+            ephemeral: true
+        });
     }
     
     else if (commandName === 'autoriser') {
@@ -316,7 +356,7 @@ async function handleCommands(interaction) {
                 .setColor(0xa855f7)
                 .addFields(
                     { name: 'Utilisateurs', value: `${totalUsers}`, inline: true },
-                    { name: 'Tentatives', value: `${totalAttempts}`, inline: true },
+                    { name: 'Tentatives totales', value: `${totalAttempts}`, inline: true },
                     { name: 'Bloqués', value: `${blocked}`, inline: true }
                 )
                 .setTimestamp();
@@ -462,7 +502,49 @@ async function handleCommands(interaction) {
     }
 }
 
-// ... (Reste du code IDENTIQUE - startFormBuilder, handleButtons, handleFormBuilder, handleSelectMenus, handleModals)
+// NOUVEAU: Endpoint webhook pour incrémenter tentatives
+const express = require('express');
+const app = express();
+app.use(express.json());
+
+app.post('/increment-attempt', (req, res) => {
+    const { userId, webhookUrl } = req.body;
+    
+    if (!userId || !webhookUrl) {
+        return res.status(400).json({ error: 'Missing userId or webhookUrl' });
+    }
+    
+    // Vérifier que le webhook correspond
+    let webhookMatch = false;
+    for (const [uid, data] of Object.entries(appealsDB)) {
+        if (data.webhookUrl === webhookUrl) {
+            webhookMatch = true;
+            break;
+        }
+    }
+    
+    if (!appealsDB[userId]) {
+        appealsDB[userId] = { attempts: 0, maxAttempts: 1, history: [] };
+    }
+    
+    appealsDB[userId].attempts += 1;
+    appealsDB[userId].lastAttempt = Date.now();
+    saveDB();
+    
+    console.log(`📊 Tentative incrémentée pour ${userId}: ${appealsDB[userId].attempts}/${appealsDB[userId].maxAttempts}`);
+    
+    res.json({ 
+        success: true, 
+        attempts: appealsDB[userId].attempts,
+        maxAttempts: appealsDB[userId].maxAttempts
+    });
+});
+
+app.listen(3000, () => {
+    console.log('🌐 Serveur webhook écoute sur le port 3000');
+});
+
+// Reste du code identique (startFormBuilder, handleButtons, handleFormBuilder, handleSelectMenus, handleModals)
 
 async function startFormBuilder(interaction) {
     const userId = interaction.user.id;
