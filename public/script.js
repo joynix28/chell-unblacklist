@@ -97,11 +97,9 @@ function increaseUserLimit(userId, newMax) {
     localStorage.setItem(trackingKey, JSON.stringify(data));
 }
 
-window.onload = async () => {
-    console.log('🔍 Démarrage du formulaire...');
+window.onload = async () => { 
     
-    if (params.access_token) {
-        console.log('✅ Token OAuth2 reçu');
+    if (params.access_token) { 
         localStorage.setItem('discord_token', params.access_token);
         if (params.state) localStorage.setItem('pending_code', params.state);
         window.history.replaceState(null, null, window.location.pathname);
@@ -109,19 +107,14 @@ window.onload = async () => {
 
     const token = localStorage.getItem('discord_token');
     let encryptedCode = params.code || localStorage.getItem('pending_code');
-
-    console.log('🔐 Code crypté (brut):', encryptedCode ? encryptedCode.substring(0, 50) + '...' : 'Absent');
-    console.log('🎫 Token Discord:', token ? 'Présent' : 'Absent');
-
-    if (!encryptedCode) {
-        console.error('❌ Aucun code crypté trouvé');
-        document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>Utilisez la commande <code>/appel</code> sur le serveur pour générer un lien valide.</p></div>";
+  
+    if (!encryptedCode) { 
+        document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>❌ Pour demander un Unblacklist , ouvre un ticket ici : https://discord.gg/f5HpfrvWXx</p></div>";
         return;
     }
     
     // FIX: Restaurer les caractères URL-safe
-    encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
-    console.log('🔧 Code restauré:', encryptedCode.substring(0, 50) + '...');
+    encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/'); 
     
     if (params.code) localStorage.setItem('pending_code', params.code);
 
@@ -129,39 +122,31 @@ window.onload = async () => {
         document.getElementById('login-container').classList.add('hidden');
         document.getElementById('form-container').classList.remove('hidden');
         
-        try {
-            console.log('🔄 Récupération des infos utilisateur Discord...');
+        try { 
             const userReq = await fetch('https://discord.com/api/users/@me', {
                 headers: { authorization: `Bearer ${token}` }
             });
             
-            if (!userReq.ok) {
-                console.error('❌ Token expiré ou invalide');
+            if (!userReq.ok) { 
                 throw new Error('Token expired');
             }
             
             const user = await userReq.json();
-            console.log('✅ Utilisateur Discord:', user.username);
+           
             
-            try {
-                console.log('🔓 Tentative de décryptage...');
-                console.log('🔑 Clé utilisée:', SECRET_KEY);
+            try { 
                 
                 const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
                 const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+                 
                 
-                console.log('📝 Longueur données décryptées:', decryptedData.length);
-                console.log('📝 Données décryptées:', decryptedData.substring(0, 100));
-                
-                if (!decryptedData || decryptedData === '') {
-                    console.error('❌ Décryptage échoué - résultat vide');
-                    console.error('🔴 Vérifiez que SECRET_KEY est identique dans le bot !');
+                if (!decryptedData || decryptedData === '') { 
                     throw new Error('Décryptage échoué');
                 }
                 
                 webhookConfig = JSON.parse(decryptedData);
-                console.log('✅ Webhook configuré:', webhookConfig.webhookUrl ? 'OK' : 'ERREUR');
-                console.log('🔔 Ping:', webhookConfig.ping);
+            
+                
                 
                 const allowed = await checkUserAttempts(user.id, webhookConfig.webhookUrl);
                 
@@ -201,10 +186,8 @@ window.onload = async () => {
                     
                     return;
                 }
-            } catch (decryptError) {
-                console.error('❌ Erreur de décryptage:', decryptError);
-                console.error('Code reçu:', encryptedCode.substring(0, 100));
-                alert('❌ Erreur de décryptage du lien.\n\nLe lien est invalide ou la clé de cryptage ne correspond pas.\n\nVérifiez que SECRET_KEY est identique dans bot/.env et public/script.js\n\nGénérez un nouveau lien avec /appel.');
+            } catch (decryptError)  
+                alert('❌ Erreur de décryptage du lien.\n\nLe lien est invalide ou la clé de cryptage ne correspond pas.\n\Contacte le support.');
                 localStorage.removeItem('pending_code');
                 localStorage.removeItem('discord_token');
                 setTimeout(() => {
@@ -213,7 +196,6 @@ window.onload = async () => {
                 return;
             }
             
-            console.log('✅ Configuration réussie, affichage du formulaire');
             document.getElementById('user-name').innerText = user.username;
             const avatarUrl = user.avatar 
                 ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=256`
@@ -221,8 +203,7 @@ window.onload = async () => {
             document.getElementById('user-avatar').src = avatarUrl;
             window.discordUser = user;
             
-        } catch (e) {
-            console.error('❌ Erreur globale:', e);
+        } catch (e) { 
             alert('❌ Une erreur est survenue.\n\n' + e.message + '\n\nVous allez être redirigé.');
             localStorage.removeItem('discord_token');
             if (!params.access_token) {
@@ -302,11 +283,9 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     submitBtn.textContent = '⏳ Envoi en cours...';
     submitBtn.disabled = true;
     
-    try {
-        console.log('📤 Début de la soumission...');
+    try { 
         
-        if (!webhookConfig) {
-            console.log('⚙️ Webhook non configuré, décryptage...');
+        if (!webhookConfig) { 
             let encryptedCode = localStorage.getItem('pending_code');
             
             // Restaurer caractères URL-safe
@@ -411,23 +390,19 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
             content: pingContent,
             embeds: [mainEmbed, detailsEmbed]
         };
-        
-        console.log('📨 Envoi de l\'embed principal...');
+         
         const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) {
-            console.error('❌ Erreur webhook:', response.status);
+        if (!response.ok) { 
             throw new Error('Erreur webhook');
         }
+         
         
-        console.log('✅ Embed envoyé');
-        
-        for (const file of uploadedFiles) {
-            console.log('📎 Envoi fichier:', file.name);
+        for (const file of uploadedFiles) { 
             const formDataFile = new FormData();
             const blob = await fetch(file.data).then(r => r.blob());
             formDataFile.append('files[0]', blob, file.name);
@@ -441,15 +416,14 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
 
         window.formSubmitted = true;
         saveUserAttempt(user.id, true);
-        
-        console.log('✅ Formulaire soumis avec succès');
+         
         alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
         localStorage.removeItem('pending_code');
         localStorage.removeItem('discord_token');
-        window.location.href = "https://discord.com";
+        window.location.href = "https://discord.gg/f5HpfrvWXx";
         
     } catch (err) {
-        console.error('❌ Erreur soumission:', err);
+ 
         alert("❌ Erreur lors de l'envoi\n\n" + err.message + "\n\nVérifiez votre connexion ou générez un nouveau lien avec /appel.");
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
