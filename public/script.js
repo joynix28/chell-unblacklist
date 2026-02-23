@@ -1,9 +1,11 @@
 const CLIENT_ID = "1475575856993665134";
 const SECRET_KEY = "CHELL_SECURITY_KEY_2026_ULTRA_SECURE";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
+const BOT_API_URL = "http://localhost:3000"; // CHANGE EN PROD: URL de ton serveur bot
 
 let uploadedFiles = [];
 let webhookConfig = null;
+let userLimitsData = null;
 
 function getParams() {
     const hash = window.location.hash.substring(1);
@@ -183,6 +185,7 @@ window.onload = async () => {
             }
             
             const user = await userReq.json();
+            console.log('✅ User connecté:', user.username, `(${user.id})`);
             
             try {
                 const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
@@ -195,63 +198,68 @@ window.onload = async () => {
                 webhookConfig = JSON.parse(decryptedData);
                 console.log('✅ Config chargée:', {
                     webhook: webhookConfig.webhookUrl ? 'OK' : 'ERREUR',
-                    form: webhookConfig.formName,
-                    userLimits: webhookConfig.userLimits
+                    form: webhookConfig.formName
                 });
                 
-                // FIX: Vérifier les tentatives depuis userLimits (géré par le bot)
-                if (webhookConfig.userLimits) {
-                    const limits = webhookConfig.userLimits;
+                // FIX: Vérifier les tentatives via API bot
+                console.log(`🔍 Vérification tentatives pour ${user.id}...`);
+                try {
+                    const checkResponse = await fetch(`${BOT_API_URL}/api/check-attempts/${user.id}`);
                     
-                    // Vérifier que l'user connecté correspond
-                    if (limits.userId !== user.id) {
-                        console.warn('⚠️ User ID mismatch');
-                    }
-                    
-                    const counter = document.getElementById('attempt-counter');
-                    if (counter) {
-                        if (limits.attempts >= limits.maxAttempts) {
-                            counter.innerHTML = `<span style="color: var(--color-error); font-weight: 700;">❌ Limite atteinte (${limits.attempts}/${limits.maxAttempts})</span>`;
-                            
-                            document.getElementById('form-container').innerHTML = `
-                                <div class="container">
-                                    <div style="text-align: center; padding: 60px 20px;">
-                                        <h1 style="color: var(--color-error); font-size: 3rem;">❌ Accès refusé</h1>
-                                        <p style="font-size: 1.2rem; margin-top: 20px; color: var(--color-text-secondary);">Vous avez déjà utilisé votre quota de tentatives (${limits.attempts}/${limits.maxAttempts}).</p>
-                                        <p style="margin-top: 20px;">Contactez un modérateur pour obtenir une autorisation supplémentaire via <code>/autoriser</code>.</p>
+                    if (!checkResponse.ok) {
+                        console.warn('⚠️ Impossible de vérifier les tentatives, autorisation par défaut');
+                        userLimitsData = { allowed: true, attempts: 0, maxAttempts: 1 };
+                    } else {
+                        userLimitsData = await checkResponse.json();
+                        console.log('📊 Tentatives:', userLimitsData);
+                        
+                        const counter = document.getElementById('attempt-counter');
+                        if (counter) {
+                            if (!userLimitsData.allowed) {
+                                counter.innerHTML = `<span style="color: var(--color-error); font-weight: 700;">❌ Limite atteinte (${userLimitsData.attempts}/${userLimitsData.maxAttempts})</span>`;
+                                
+                                document.getElementById('form-container').innerHTML = `
+                                    <div class="container">
+                                        <div style="text-align: center; padding: 60px 20px;">
+                                            <h1 style="color: var(--color-error); font-size: 3rem;">❌ Accès refusé</h1>
+                                            <p style="font-size: 1.2rem; margin-top: 20px; color: var(--color-text-secondary);">Vous avez déjà utilisé votre quota de tentatives (${userLimitsData.attempts}/${userLimitsData.maxAttempts}).</p>
+                                            <p style="margin-top: 20px;">Contactez un modérateur pour obtenir une autorisation supplémentaire via <code>/autoriser</code>.</p>
+                                        </div>
                                     </div>
-                                </div>
-                            `;
-                            
-                            const blockEmbed = {
-                                title: "⚠️ Tentative d'accès bloquée",
-                                description: `L'utilisateur **${user.username}** (\`${user.id}\`) a tenté d'accéder au formulaire mais a dépassé son quota.`,
-                                color: 0xd4351c,
-                                fields: [
-                                    { name: "Tentatives", value: `${limits.attempts}/${limits.maxAttempts}`, inline: true },
-                                    { name: "Action", value: "Utilisez `/autoriser` pour débloquer", inline: true }
-                                ],
-                                thumbnail: {
-                                    url: user.avatar 
-                                        ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
-                                        : `https://cdn.discordapp.com/embed/avatars/0.png`
-                                },
-                                timestamp: new Date().toISOString()
-                            };
-                            
-                            await fetch(webhookConfig.webhookUrl, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ embeds: [blockEmbed] })
-                            });
-                            
-                            return;
-                        } else {
-                            counter.innerHTML = `📊 Tentative ${limits.attempts + 1}/${limits.maxAttempts}`;
+                                `;
+                                
+                                const blockEmbed = {
+                                    title: "⚠️ Tentative d'accès bloquée",
+                                    description: `L'utilisateur **${user.username}** (\`${user.id}\`) a tenté d'accéder au formulaire mais a dépassé son quota.`,
+                                    color: 0xd4351c,
+                                    fields: [
+                                        { name: "Tentatives", value: `${userLimitsData.attempts}/${userLimitsData.maxAttempts}`, inline: true },
+                                        { name: "Action", value: "Utilisez `/autoriser` pour débloquer", inline: true }
+                                    ],
+                                    thumbnail: {
+                                        url: user.avatar 
+                                            ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
+                                            : `https://cdn.discordapp.com/embed/avatars/0.png`
+                                    },
+                                    timestamp: new Date().toISOString()
+                                };
+                                
+                                await fetch(webhookConfig.webhookUrl, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ embeds: [blockEmbed] })
+                                });
+                                
+                                return;
+                            } else {
+                                counter.innerHTML = `📊 Tentative ${userLimitsData.attempts + 1}/${userLimitsData.maxAttempts}`;
+                            }
                         }
                     }
-                } else {
-                    console.log('🔓 Aucune limite utilisateur définie (lien générique)');
+                } catch (apiError) {
+                    console.error('❌ Erreur API bot:', apiError);
+                    console.warn('⚠️ Continuer sans vérification de tentatives');
+                    userLimitsData = { allowed: true, attempts: 0, maxAttempts: 1 };
                 }
                 
                 if (webhookConfig.customForm) {
@@ -463,6 +471,18 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
                 method: "POST",
                 body: formDataFile
             });
+        }
+        
+        // FIX: Incrémenter tentatives via API bot
+        try {
+            await fetch(`${BOT_API_URL}/api/increment-attempt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id })
+            });
+            console.log('✅ Tentative incrémentée côté bot');
+        } catch (err) {
+            console.warn('⚠️ Impossible d\'incrémenter tentatives:', err);
         }
         
         alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
