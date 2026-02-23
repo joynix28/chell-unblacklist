@@ -3,6 +3,7 @@ const SECRET_KEY = "CHELL_SECURITY_KEY_2026_ULTRA_SECURE";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
 
 let uploadedFiles = [];
+let webhookConfig = null;
 
 function getParams() {
     const hash = window.location.hash.substring(1);
@@ -67,7 +68,6 @@ window.onload = async () => {
         }
     }
     
-    // File upload handler
     const fileInput = document.getElementById('attachments');
     if (fileInput) {
         fileInput.addEventListener('change', handleFileSelect);
@@ -135,18 +135,30 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     const encryptedCode = localStorage.getItem('pending_code');
     
     try {
+        // Décryptage des données (webhook + ping)
         const bytes = CryptoJS.AES.decrypt(decodeURIComponent(encryptedCode), SECRET_KEY);
-        const webhookUrl = bytes.toString(CryptoJS.enc.Utf8);
+        const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+        
+        if (!decryptedData) throw new Error("Décryptage échoué");
+        
+        webhookConfig = JSON.parse(decryptedData);
+        const webhookUrl = webhookConfig.webhookUrl;
+        const pingType = webhookConfig.ping || 'none';
         
         if (!webhookUrl.startsWith("http")) throw new Error("URL invalide");
         
         const formData = new FormData(e.target);
         const user = window.discordUser;
         
+        // Déterminer le ping
+        let pingContent = '';
+        if (pingType === 'everyone') pingContent = '@everyone';
+        else if (pingType === 'here') pingContent = '@here';
+        
         // Main embed
         const mainEmbed = {
             title: "📨 Nouvelle demande de révision de sanction",
-            description: `**Utilisateur :** ${user.username} (${user.id})`,
+            description: `**Utilisateur :** ${user.username} (\`${user.id}\`)`,
             color: 0x6366f1,
             thumbnail: { 
                 url: user.avatar 
@@ -182,7 +194,7 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
             timestamp: new Date().toISOString()
         };
         
-        // Second embed for analysis and motivation
+        // Second embed
         const detailsEmbed = {
             color: 0xa855f7,
             fields: [
@@ -212,9 +224,9 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
             });
         }
         
-        // Send to webhook
+        // Envoi du message principal
         const payload = {
-            content: "@everyone",
+            content: pingContent,
             embeds: [mainEmbed, detailsEmbed]
         };
         
@@ -226,12 +238,12 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         
         if (!response.ok) throw new Error('Erreur webhook');
         
-        // Upload files as separate messages if any
+        // Upload des fichiers joints
         for (const file of uploadedFiles) {
             const formDataFile = new FormData();
             const blob = await fetch(file.data).then(r => r.blob());
             formDataFile.append('files[0]', blob, file.name);
-            formDataFile.append('content', `📎 Pièce jointe de ${user.username}`);
+            formDataFile.append('content', `📎 Pièce jointe de **${user.username}**`);
             
             await fetch(webhookUrl, {
                 method: "POST",
@@ -246,7 +258,7 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         
     } catch (err) {
         console.error(err);
-        alert("❌ Erreur lors de l'envoi\n\nLe lien est peut-être expiré. Générez-en un nouveau avec /appel.");
+        alert("❌ Erreur lors de l'envoi\n\nLe lien est peut-être expiré ou invalide. Générez-en un nouveau avec /appel.");
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         isSubmitting = false;
