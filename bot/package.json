@@ -1,0 +1,24 @@
+{
+  "name": "chell-unblacklist-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord pour générer des liens de formulaire d'unblacklist sécurisés",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": ["discord", "bot", "unblacklist", "moderation"],
+  "author": "Joynix",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
