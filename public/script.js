@@ -29,9 +29,14 @@ function closePrivacyModal() {
 }
 
 // Fermer modal en cliquant en dehors
-document.getElementById('privacyModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closePrivacyModal();
+window.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('privacyModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closePrivacyModal();
+            }
+        });
     }
 });
 
@@ -56,19 +61,18 @@ async function checkUserAttempts(userId, webhookUrl) {
         userAttempts = data.attempts || 0;
         maxAttempts = data.maxAttempts || 1;
         
-        // Mettre à jour l'affichage
         const counter = document.getElementById('attempt-counter');
         if (counter) {
             if (userAttempts >= maxAttempts) {
                 counter.innerHTML = `<span style="color: var(--color-error); font-weight: 700;">❌ Limite atteinte (${userAttempts}/${maxAttempts})</span>`;
-                return false; // Bloqué
+                return false;
             } else {
                 counter.innerHTML = `📊 Tentative ${userAttempts + 1}/${maxAttempts}`;
             }
         }
     }
     
-    return true; // Autorisé
+    return true;
 }
 
 function saveUserAttempt(userId, success = false) {
@@ -78,7 +82,6 @@ function saveUserAttempt(userId, success = false) {
     let data = stored ? JSON.parse(stored) : { attempts: 0, maxAttempts: 1 };
     
     if (!success) {
-        // Tentative non aboutie (abandon de formulaire)
         data.attempts += 1;
     }
     
@@ -96,7 +99,10 @@ function increaseUserLimit(userId, newMax) {
 }
 
 window.onload = async () => {
+    console.log('🔍 Démarrage du formulaire...');
+    
     if (params.access_token) {
+        console.log('✅ Token OAuth2 reçu');
         localStorage.setItem('discord_token', params.access_token);
         if (params.state) localStorage.setItem('pending_code', params.state);
         window.history.replaceState(null, null, window.location.pathname);
@@ -105,7 +111,11 @@ window.onload = async () => {
     const token = localStorage.getItem('discord_token');
     const encryptedCode = params.code || localStorage.getItem('pending_code');
 
+    console.log('🔐 Code crypté:', encryptedCode ? 'Présent' : 'Absent');
+    console.log('🎫 Token Discord:', token ? 'Présent' : 'Absent');
+
     if (!encryptedCode) {
+        console.error('❌ Aucun code crypté trouvé');
         document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>Utilisez la commande <code>/appel</code> sur le serveur pour générer un lien valide.</p></div>";
         return;
     }
@@ -117,21 +127,39 @@ window.onload = async () => {
         document.getElementById('form-container').classList.remove('hidden');
         
         try {
+            console.log('🔄 Récupération des infos utilisateur Discord...');
             const userReq = await fetch('https://discord.com/api/users/@me', {
                 headers: { authorization: `Bearer ${token}` }
             });
-            if (!userReq.ok) throw new Error('Token expired');
-            const user = await userReq.json();
             
-            // Décrypter pour obtenir le webhook
-            const bytes = CryptoJS.AES.decrypt(decodeURIComponent(encryptedCode), SECRET_KEY);
-            const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
-            if (decryptedData) {
+            if (!userReq.ok) {
+                console.error('❌ Token expiré ou invalide');
+                throw new Error('Token expired');
+            }
+            
+            const user = await userReq.json();
+            console.log('✅ Utilisateur Discord:', user.username);
+            
+            // Décryptage avec gestion d'erreur
+            try {
+                console.log('🔓 Tentative de décryptage...');
+                const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
+                const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+                
+                console.log('📝 Données décryptées:', decryptedData ? 'OK' : 'VIDE');
+                
+                if (!decryptedData || decryptedData === '') {
+                    console.error('❌ Décryptage échoué - résultat vide');
+                    throw new Error('Décryptage échoué');
+                }
+                
                 webhookConfig = JSON.parse(decryptedData);
+                console.log('✅ Webhook configuré:', webhookConfig.webhookUrl.substring(0, 50) + '...');
+                
                 const allowed = await checkUserAttempts(user.id, webhookConfig.webhookUrl);
                 
                 if (!allowed) {
-                    // Utilisateur bloqué
+                    console.warn('⚠️ Utilisateur bloqué');
                     document.getElementById('form-container').innerHTML = `
                         <div class="container">
                             <div style="text-align: center; padding: 60px 20px;">
@@ -142,7 +170,6 @@ window.onload = async () => {
                         </div>
                     `;
                     
-                    // Notifier l'équipe modération
                     const blockEmbed = {
                         title: "⚠️ Tentative d'accès bloquée",
                         description: `L'utilisateur **${user.username}** (\`${user.id}\`) a tenté d'accéder au formulaire mais a dépassé son quota de tentatives.`,
@@ -167,18 +194,31 @@ window.onload = async () => {
                     
                     return;
                 }
+            } catch (decryptError) {
+                console.error('❌ Erreur de décryptage:', decryptError);
+                console.error('Code reçu:', encryptedCode.substring(0, 50));
+                alert('❌ Erreur de décryptage du lien.\n\nLe lien est invalide ou a été corrompu.\nGénérez un nouveau lien avec /appel.');
+                localStorage.removeItem('pending_code');
+                localStorage.removeItem('discord_token');
+                window.location.href = window.location.pathname;
+                return;
             }
             
+            console.log('✅ Configuration réussie, affichage du formulaire');
             document.getElementById('user-name').innerText = user.username;
             const avatarUrl = user.avatar 
                 ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=256`
                 : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discriminator) % 5}.png`;
             document.getElementById('user-avatar').src = avatarUrl;
             window.discordUser = user;
+            
         } catch (e) {
-            console.error(e);
+            console.error('❌ Erreur globale:', e);
+            alert('❌ Une erreur est survenue.\n\n' + e.message + '\n\nVous allez être redirigé.');
             localStorage.removeItem('discord_token');
-            if (!params.access_token) window.location.reload();
+            if (!params.access_token) {
+                setTimeout(() => window.location.reload(), 2000);
+            }
         }
     }
     
@@ -187,7 +227,6 @@ window.onload = async () => {
         fileInput.addEventListener('change', handleFileSelect);
     }
     
-    // Détecter l'abandon de page
     window.addEventListener('beforeunload', () => {
         if (window.discordUser && !window.formSubmitted) {
             saveUserAttempt(window.discordUser.id, false);
@@ -257,12 +296,18 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     const encryptedCode = localStorage.getItem('pending_code');
     
     try {
-        const bytes = CryptoJS.AES.decrypt(decodeURIComponent(encryptedCode), SECRET_KEY);
-        const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+        console.log('📤 Début de la soumission...');
         
-        if (!decryptedData) throw new Error("Décryptage échoué");
+        if (!webhookConfig) {
+            console.log('⚙️ Webhook non configuré, décryptage...');
+            const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
+            const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+            
+            if (!decryptedData) throw new Error("Décryptage échoué");
+            
+            webhookConfig = JSON.parse(decryptedData);
+        }
         
-        webhookConfig = JSON.parse(decryptedData);
         const webhookUrl = webhookConfig.webhookUrl;
         const pingType = webhookConfig.ping || 'none';
         
@@ -271,7 +316,6 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         const formData = new FormData(e.target);
         const user = window.discordUser;
         
-        // Vérifier CGU
         if (!document.getElementById('accept_terms').checked) {
             alert("❌ Vous devez accepter le protocole de confidentialité pour continuer.");
             submitBtn.textContent = originalText;
@@ -356,15 +400,22 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
             embeds: [mainEmbed, detailsEmbed]
         };
         
+        console.log('📨 Envoi de l\'embed principal...');
         const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) throw new Error('Erreur webhook');
+        if (!response.ok) {
+            console.error('❌ Erreur webhook:', response.status);
+            throw new Error('Erreur webhook');
+        }
+        
+        console.log('✅ Embed envoyé');
         
         for (const file of uploadedFiles) {
+            console.log('📎 Envoi fichier:', file.name);
             const formDataFile = new FormData();
             const blob = await fetch(file.data).then(r => r.blob());
             formDataFile.append('files[0]', blob, file.name);
@@ -379,14 +430,15 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         window.formSubmitted = true;
         saveUserAttempt(user.id, true);
         
+        console.log('✅ Formulaire soumis avec succès');
         alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
         localStorage.removeItem('pending_code');
         localStorage.removeItem('discord_token');
         window.location.href = "https://discord.com";
         
     } catch (err) {
-        console.error(err);
-        alert("❌ Erreur lors de l'envoi\n\nLe lien est peut-être expiré ou invalide. Générez-en un nouveau avec /appel.");
+        console.error('❌ Erreur soumission:', err);
+        alert("❌ Erreur lors de l'envoi\n\n" + err.message + "\n\nVérifiez votre connexion ou générez un nouveau lien avec /appel.");
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         isSubmitting = false;
