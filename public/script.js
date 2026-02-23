@@ -28,7 +28,6 @@ function closePrivacyModal() {
     document.body.style.overflow = 'auto';
 }
 
-// Fermer modal en cliquant en dehors
 window.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('privacyModal');
     if (modal) {
@@ -111,7 +110,7 @@ window.onload = async () => {
     const token = localStorage.getItem('discord_token');
     const encryptedCode = params.code || localStorage.getItem('pending_code');
 
-    console.log('🔐 Code crypté:', encryptedCode ? 'Présent' : 'Absent');
+    console.log('🔐 Code crypté:', encryptedCode ? 'Présent (' + encryptedCode.substring(0, 20) + '...)' : 'Absent');
     console.log('🎫 Token Discord:', token ? 'Présent' : 'Absent');
 
     if (!encryptedCode) {
@@ -140,21 +139,25 @@ window.onload = async () => {
             const user = await userReq.json();
             console.log('✅ Utilisateur Discord:', user.username);
             
-            // Décryptage avec gestion d'erreur
             try {
                 console.log('🔓 Tentative de décryptage...');
+                console.log('🔑 Clé utilisée:', SECRET_KEY);
+                
+                // FIX: PAS de decodeURIComponent ici, params.code est déjà décodé
                 const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
                 const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
                 
-                console.log('📝 Données décryptées:', decryptedData ? 'OK' : 'VIDE');
+                console.log('📝 Données décryptées (brut):', decryptedData.substring(0, 50));
                 
                 if (!decryptedData || decryptedData === '') {
                     console.error('❌ Décryptage échoué - résultat vide');
+                    console.error('🔴 Vérifiez que SECRET_KEY est identique dans le bot !');
                     throw new Error('Décryptage échoué');
                 }
                 
                 webhookConfig = JSON.parse(decryptedData);
-                console.log('✅ Webhook configuré:', webhookConfig.webhookUrl.substring(0, 50) + '...');
+                console.log('✅ Webhook configuré:', webhookConfig.webhookUrl ? 'OK' : 'ERREUR');
+                console.log('🔔 Ping:', webhookConfig.ping);
                 
                 const allowed = await checkUserAttempts(user.id, webhookConfig.webhookUrl);
                 
@@ -196,11 +199,13 @@ window.onload = async () => {
                 }
             } catch (decryptError) {
                 console.error('❌ Erreur de décryptage:', decryptError);
-                console.error('Code reçu:', encryptedCode.substring(0, 50));
-                alert('❌ Erreur de décryptage du lien.\n\nLe lien est invalide ou a été corrompu.\nGénérez un nouveau lien avec /appel.');
+                console.error('Code reçu:', encryptedCode.substring(0, 100));
+                alert('❌ Erreur de décryptage du lien.\n\nLe lien est invalide ou la clé de cryptage ne correspond pas.\n\nVérifiez que SECRET_KEY est identique dans bot/.env et public/script.js\n\nGénérez un nouveau lien avec /appel.');
                 localStorage.removeItem('pending_code');
                 localStorage.removeItem('discord_token');
-                window.location.href = window.location.pathname;
+                setTimeout(() => {
+                    window.location.href = window.location.pathname;
+                }, 3000);
                 return;
             }
             
@@ -293,13 +298,14 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     submitBtn.textContent = '⏳ Envoi en cours...';
     submitBtn.disabled = true;
     
-    const encryptedCode = localStorage.getItem('pending_code');
-    
     try {
         console.log('📤 Début de la soumission...');
         
         if (!webhookConfig) {
             console.log('⚙️ Webhook non configuré, décryptage...');
+            const encryptedCode = localStorage.getItem('pending_code');
+            
+            // FIX: PAS de decodeURIComponent ici non plus
             const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
             const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
             
