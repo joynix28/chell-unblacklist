@@ -1,7 +1,8 @@
-const CLIENT_ID = "1475575856993665134"; 
+const CLIENT_ID = "1475575856993665134";
 const SECRET_KEY = "CHELL_SECURITY_KEY_2026_ULTRA_SECURE";
-
 const REDIRECT_URI = window.location.origin + window.location.pathname;
+
+let uploadedFiles = [];
 
 function getParams() {
     const hash = window.location.hash.substring(1);
@@ -17,12 +18,11 @@ const params = getParams();
 function loginDiscord() {
     const encryptedCode = params.code || localStorage.getItem('pending_code');
     if (!encryptedCode) {
-        alert("❌ Lien invalide. Génère un lien avec la commande /appel sur le serveur Discord.");
+        alert("❌ Lien invalide. Générez un lien avec la commande /appel sur le serveur Discord.");
         return;
     }
     
     localStorage.setItem('pending_code', encryptedCode);
-    
     const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify&state=${encryptedCode}`;
     window.location.href = authUrl;
 }
@@ -38,7 +38,7 @@ window.onload = async () => {
     const encryptedCode = params.code || localStorage.getItem('pending_code');
 
     if (!encryptedCode) {
-        document.body.innerHTML = "<div style='color:white;text-align:center;margin-top:20%;font-family:Inter,sans-serif'><h1>❌ Lien invalide</h1><p>Utilise la commande /appel sur le serveur pour générer un lien valide.</p></div>";
+        document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>Utilisez la commande <code>/appel</code> sur le serveur pour générer un lien valide.</p></div>";
         return;
     }
     
@@ -56,12 +56,21 @@ window.onload = async () => {
             const user = await userReq.json();
             
             document.getElementById('user-name').innerText = user.username;
-            document.getElementById('user-avatar').src = `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
+            const avatarUrl = user.avatar 
+                ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=256`
+                : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discriminator) % 5}.png`;
+            document.getElementById('user-avatar').src = avatarUrl;
             window.discordUser = user;
         } catch (e) {
             localStorage.removeItem('discord_token');
             if (!params.access_token) window.location.reload();
         }
+    }
+    
+    // File upload handler
+    const fileInput = document.getElementById('attachments');
+    if (fileInput) {
+        fileInput.addEventListener('change', handleFileSelect);
     }
 };
 
@@ -73,6 +82,43 @@ function toggleReasonInput() {
     if (val === 'Non') document.getElementById('reason_no').classList.remove('hidden');
 }
 
+function handleFileSelect(e) {
+    const files = Array.from(e.target.files);
+    const fileList = document.getElementById('file-list');
+    
+    files.forEach(file => {
+        if (file.size > 10 * 1024 * 1024) {
+            alert(`Le fichier "${file.name}" dépasse la taille maximale de 10 Mo.`);
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            uploadedFiles.push({
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                data: event.target.result
+            });
+            
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <span>📄 ${file.name} (${(file.size / 1024).toFixed(1)} Ko)</span>
+                <button type="button" class="file-remove" onclick="removeFile(${uploadedFiles.length - 1})">❌ Retirer</button>
+            `;
+            fileList.appendChild(fileItem);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function removeFile(index) {
+    uploadedFiles.splice(index, 1);
+    const fileList = document.getElementById('file-list');
+    fileList.children[index].remove();
+}
+
 let isSubmitting = false;
 
 document.getElementById('unbanForm').addEventListener('submit', async (e) => {
@@ -81,9 +127,9 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     if (isSubmitting) return;
     isSubmitting = true;
     
-    const submitBtn = e.target.querySelector('.btn-submit');
+    const submitBtn = e.target.querySelector('.button-submit');
     const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Envoi en cours...';
+    submitBtn.textContent = '⏳ Envoi en cours...';
     submitBtn.disabled = true;
     
     const encryptedCode = localStorage.getItem('pending_code');
@@ -97,44 +143,110 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         const formData = new FormData(e.target);
         const user = window.discordUser;
         
-        const embed = {
-            title: "📨 Nouvelle demande d'Unblacklist",
+        // Main embed
+        const mainEmbed = {
+            title: "📨 Nouvelle demande de révision de sanction",
+            description: `**Utilisateur :** ${user.username} (${user.id})`,
             color: 0x6366f1,
-            thumbnail: { url: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` },
+            thumbnail: { 
+                url: user.avatar 
+                    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
+                    : `https://cdn.discordapp.com/embed/avatars/0.png`
+            },
             fields: [
-                { name: "👤 Utilisateur", value: `${user.username} (<@${user.id}>)\nID: \`${user.id}\``, inline: false },
-                { name: "📅 Date du blacklist", value: formData.get("date_blacklist") || "Non renseignée", inline: true },
-                { name: "❓ Raison connue ?", value: formData.get("reason_known"), inline: true },
-                { name: "📝 Explication", value: (formData.get("reason_explanation") || formData.get("reason_unknown") || "Aucune explication fournie").substring(0, 1024) },
-                { name: "⚖️ Accord avec sanction", value: `**${formData.get("agreement")}**\n${formData.get("agreement_desc").substring(0, 900)}` },
-                { name: "🏳️ Reconnaissance des faits", value: `**${formData.get("admission")}**\n${formData.get("admission_desc").substring(0, 900)}` },
-                { name: "🔧 Analyse personnelle", value: formData.get("analysis").substring(0, 1024) },
-                { name: "✨ Motivation", value: formData.get("motivation").substring(0, 1024) }
+                { 
+                    name: "📅 Date de la sanction", 
+                    value: formData.get("date_blacklist") || "Non renseignée", 
+                    inline: true 
+                },
+                { 
+                    name: "❓ Raison connue", 
+                    value: formData.get("reason_known"), 
+                    inline: true 
+                },
+                { name: "\u200b", value: "\u200b", inline: false },
+                { 
+                    name: "📝 Explication de la raison", 
+                    value: (formData.get("reason_explanation") || formData.get("reason_unknown") || "_Aucune explication fournie_").substring(0, 1024)
+                },
+                { 
+                    name: "⚖️ Position sur la décision", 
+                    value: `**${formData.get("agreement")}**\n${formData.get("agreement_desc").substring(0, 900)}`
+                },
+                { 
+                    name: "🏳️ Reconnaissance des faits", 
+                    value: `**${formData.get("admission")}**\n${formData.get("admission_desc").substring(0, 900)}`
+                }
             ],
-            footer: { text: "Système Unblacklist • Chell Bot" },
+            footer: { text: "Système de révision Chell" },
             timestamp: new Date().toISOString()
         };
         
+        // Second embed for analysis and motivation
+        const detailsEmbed = {
+            color: 0xa855f7,
+            fields: [
+                { 
+                    name: "🔧 Analyse et prise de recul", 
+                    value: formData.get("analysis").substring(0, 1024)
+                },
+                { 
+                    name: "✨ Motivation pour la levée de sanction", 
+                    value: formData.get("motivation").substring(0, 1024)
+                }
+            ]
+        };
+        
         if (formData.get("extras")) {
-            embed.fields.push({ name: "💬 Compléments", value: formData.get("extras").substring(0, 1024) });
+            detailsEmbed.fields.push({ 
+                name: "💬 Informations complémentaires", 
+                value: formData.get("extras").substring(0, 1024) 
+            });
         }
-
+        
+        if (uploadedFiles.length > 0) {
+            const fileNames = uploadedFiles.map(f => `📄 ${f.name}`).join('\n');
+            detailsEmbed.fields.push({ 
+                name: "📎 Pièces jointes", 
+                value: fileNames.substring(0, 1024)
+            });
+        }
+        
+        // Send to webhook
+        const payload = {
+            content: "@everyone",
+            embeds: [mainEmbed, detailsEmbed]
+        };
+        
         const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ embeds: [embed] })
+            body: JSON.stringify(payload)
         });
         
         if (!response.ok) throw new Error('Erreur webhook');
+        
+        // Upload files as separate messages if any
+        for (const file of uploadedFiles) {
+            const formDataFile = new FormData();
+            const blob = await fetch(file.data).then(r => r.blob());
+            formDataFile.append('files[0]', blob, file.name);
+            formDataFile.append('content', `📎 Pièce jointe de ${user.username}`);
+            
+            await fetch(webhookUrl, {
+                method: "POST",
+                body: formDataFile
+            });
+        }
 
-        alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera ta demande.");
+        alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
         localStorage.removeItem('pending_code');
         localStorage.removeItem('discord_token');
         window.location.href = "https://discord.com";
         
     } catch (err) {
         console.error(err);
-        alert("❌ Erreur : Le lien est invalide, expiré ou corrompu.\n\nGénère un nouveau lien avec /appel.");
+        alert("❌ Erreur lors de l'envoi\n\nLe lien est peut-être expiré. Générez-en un nouveau avec /appel.");
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         isSubmitting = false;
