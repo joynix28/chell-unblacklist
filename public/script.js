@@ -4,8 +4,6 @@ const REDIRECT_URI = window.location.origin + window.location.pathname;
 
 let uploadedFiles = [];
 let webhookConfig = null;
-let userAttempts = 0;
-let maxAttempts = 1;
 
 function getParams() {
     const hash = window.location.hash.substring(1);
@@ -51,55 +49,16 @@ function loginDiscord() {
     window.location.href = authUrl;
 }
 
-async function checkUserAttempts(userId, webhookUrl) {
-    const trackingKey = `appeals_${userId}`;
-    const stored = localStorage.getItem(trackingKey);
-    
-    if (stored) {
-        const data = JSON.parse(stored);
-        userAttempts = data.attempts || 0;
-        maxAttempts = data.maxAttempts || 1;
-        
-        const counter = document.getElementById('attempt-counter');
-        if (counter) {
-            if (userAttempts >= maxAttempts) {
-                counter.innerHTML = `<span style="color: var(--color-error); font-weight: 700;">❌ Limite atteinte (${userAttempts}/${maxAttempts})</span>`;
-                return false;
-            } else {
-                counter.innerHTML = `📊 Tentative ${userAttempts + 1}/${maxAttempts}`;
-            }
-        }
-    }
-    
-    return true;
-}
-
-function saveUserAttempt(userId, success = false) {
-    const trackingKey = `appeals_${userId}`;
-    const stored = localStorage.getItem(trackingKey);
-    
-    let data = stored ? JSON.parse(stored) : { attempts: 0, maxAttempts: 1 };
-    
-    if (!success) {
-        data.attempts += 1;
-    }
-    
-    localStorage.setItem(trackingKey, JSON.stringify(data));
-}
-
-// NOUVEAU: Générateur HTML formulaire personnalisé
 function generateCustomForm(customFormData) {
     console.log('🎨 Génération formulaire personnalisé:', customFormData);
     
     const form = document.getElementById('unbanForm');
     form.innerHTML = '';
     
-    // Appliquer thème si fourni
     if (customFormData.theme) {
         document.documentElement.style.setProperty('--color-primary', customFormData.theme.color || '#6366f1');
     }
     
-    // Titre et intro
     const intro = document.createElement('div');
     intro.innerHTML = `
         <h1 class="heading-xl">Formulaire personnalisé</h1>
@@ -107,7 +66,6 @@ function generateCustomForm(customFormData) {
     `;
     form.appendChild(intro);
     
-    // Générer chaque question
     customFormData.questions.forEach((q, index) => {
         const fieldset = document.createElement('fieldset');
         fieldset.className = 'fieldset';
@@ -159,7 +117,6 @@ function generateCustomForm(customFormData) {
         form.appendChild(fieldset);
     });
     
-    // CGU
     const cguGroup = document.createElement('div');
     cguGroup.className = 'form-group';
     cguGroup.innerHTML = `
@@ -173,7 +130,6 @@ function generateCustomForm(customFormData) {
     `;
     form.appendChild(cguGroup);
     
-    // Warning
     const warning = document.createElement('div');
     warning.className = 'warning-text';
     warning.innerHTML = `
@@ -185,7 +141,6 @@ function generateCustomForm(customFormData) {
     `;
     form.appendChild(warning);
     
-    // Bouton submit
     const submitBtn = document.createElement('button');
     submitBtn.type = 'submit';
     submitBtn.className = 'button-submit';
@@ -238,53 +193,74 @@ window.onload = async () => {
                 }
                 
                 webhookConfig = JSON.parse(decryptedData);
-                console.log('✅ Webhook configuré:', webhookConfig.webhookUrl ? 'OK' : 'ERREUR');
-                console.log('📝 Formulaire:', webhookConfig.formName);
+                console.log('✅ Config chargée:', {
+                    webhook: webhookConfig.webhookUrl ? 'OK' : 'ERREUR',
+                    form: webhookConfig.formName,
+                    userLimits: webhookConfig.userLimits
+                });
                 
-                // NOUVEAU: Si formulaire perso, générer le HTML
+                // FIX: Vérifier les tentatives depuis userLimits (géré par le bot)
+                if (webhookConfig.userLimits) {
+                    const limits = webhookConfig.userLimits;
+                    
+                    // Vérifier que l'user connecté correspond
+                    if (limits.userId !== user.id) {
+                        console.warn('⚠️ User ID mismatch');
+                    }
+                    
+                    const counter = document.getElementById('attempt-counter');
+                    if (counter) {
+                        if (limits.attempts >= limits.maxAttempts) {
+                            counter.innerHTML = `<span style="color: var(--color-error); font-weight: 700;">❌ Limite atteinte (${limits.attempts}/${limits.maxAttempts})</span>`;
+                            
+                            document.getElementById('form-container').innerHTML = `
+                                <div class="container">
+                                    <div style="text-align: center; padding: 60px 20px;">
+                                        <h1 style="color: var(--color-error); font-size: 3rem;">❌ Accès refusé</h1>
+                                        <p style="font-size: 1.2rem; margin-top: 20px; color: var(--color-text-secondary);">Vous avez déjà utilisé votre quota de tentatives (${limits.attempts}/${limits.maxAttempts}).</p>
+                                        <p style="margin-top: 20px;">Contactez un modérateur pour obtenir une autorisation supplémentaire via <code>/autoriser</code>.</p>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            const blockEmbed = {
+                                title: "⚠️ Tentative d'accès bloquée",
+                                description: `L'utilisateur **${user.username}** (\`${user.id}\`) a tenté d'accéder au formulaire mais a dépassé son quota.`,
+                                color: 0xd4351c,
+                                fields: [
+                                    { name: "Tentatives", value: `${limits.attempts}/${limits.maxAttempts}`, inline: true },
+                                    { name: "Action", value: "Utilisez `/autoriser` pour débloquer", inline: true }
+                                ],
+                                thumbnail: {
+                                    url: user.avatar 
+                                        ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
+                                        : `https://cdn.discordapp.com/embed/avatars/0.png`
+                                },
+                                timestamp: new Date().toISOString()
+                            };
+                            
+                            await fetch(webhookConfig.webhookUrl, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ embeds: [blockEmbed] })
+                            });
+                            
+                            return;
+                        } else {
+                            counter.innerHTML = `📊 Tentative ${limits.attempts + 1}/${limits.maxAttempts}`;
+                        }
+                    }
+                } else {
+                    console.log('🔓 Aucune limite utilisateur définie (lien générique)');
+                }
+                
                 if (webhookConfig.customForm) {
                     console.log('🎨 Formulaire personnalisé détecté');
                     generateCustomForm(webhookConfig.customForm);
                 }
                 
-                const allowed = await checkUserAttempts(user.id, webhookConfig.webhookUrl);
-                
-                if (!allowed) {
-                    document.getElementById('form-container').innerHTML = `
-                        <div class="container">
-                            <div style="text-align: center; padding: 60px 20px;">
-                                <h1 style="color: var(--color-error); font-size: 3rem;">❌ Accès refusé</h1>
-                                <p style="font-size: 1.2rem; margin-top: 20px; color: var(--color-text-secondary);">Vous avez déjà utilisé votre quota de tentatives (${userAttempts}/${maxAttempts}).</p>
-                                <p style="margin-top: 20px;">Contactez un modérateur pour obtenir une autorisation supplémentaire via la commande <code>/autoriser</code>.</p>
-                            </div>
-                        </div>
-                    `;
-                    
-                    const blockEmbed = {
-                        title: "⚠️ Tentative d'accès bloquée",
-                        description: `L'utilisateur **${user.username}** (\`${user.id}\`) a tenté d'accéder au formulaire mais a dépassé son quota de tentatives.`,
-                        color: 0xd4351c,
-                        fields: [
-                            { name: "Tentatives effectuées", value: `${userAttempts}/${maxAttempts}`, inline: true },
-                            { name: "Action requise", value: "Utilisez `/autoriser` pour débloquer", inline: true }
-                        ],
-                        thumbnail: {
-                            url: user.avatar 
-                                ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
-                                : `https://cdn.discordapp.com/embed/avatars/0.png`
-                        },
-                        timestamp: new Date().toISOString()
-                    };
-                    
-                    await fetch(webhookConfig.webhookUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ embeds: [blockEmbed] })
-                    });
-                    
-                    return;
-                }
             } catch (decryptError) {
+                console.error('❌ Erreur décryptage:', decryptError);
                 alert('❌ Erreur de décryptage du lien.\n\nContacte le support.');
                 localStorage.removeItem('pending_code');
                 localStorage.removeItem('discord_token');
@@ -302,6 +278,7 @@ window.onload = async () => {
             window.discordUser = user;
             
         } catch (e) {
+            console.error('❌ Erreur:', e);
             alert('❌ Une erreur est survenue.\n\n' + e.message + '\n\nVous allez être redirigé.');
             localStorage.removeItem('discord_token');
             if (!params.access_token) {
@@ -314,12 +291,6 @@ window.onload = async () => {
     if (fileInput) {
         fileInput.addEventListener('change', handleFileSelect);
     }
-    
-    window.addEventListener('beforeunload', () => {
-        if (window.discordUser && !window.formSubmitted) {
-            saveUserAttempt(window.discordUser.id, false);
-        }
-    });
 };
 
 function toggleReasonInput() {
@@ -368,7 +339,6 @@ function removeFile(index) {
 }
 
 let isSubmitting = false;
-window.formSubmitted = false;
 
 document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -414,11 +384,9 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         if (pingType === 'everyone') pingContent = '@everyone';
         else if (pingType === 'here') pingContent = '@here';
         
-        // Construire les champs pour le formulaire par défaut OU perso
         let fields = [];
         
         if (webhookConfig.customForm) {
-            // Formulaire perso
             webhookConfig.customForm.questions.forEach((q, index) => {
                 const fieldName = `custom_field_${index}`;
                 let value = formData.get(fieldName) || '_Non fourni_';
@@ -435,7 +403,6 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
                 });
             });
         } else {
-            // Formulaire par défaut
             fields = [
                 { name: "📅 Date de la sanction", value: formData.get("date_blacklist") || "Non renseignée", inline: true },
                 { name: "❓ Raison connue", value: formData.get("reason_known"), inline: true },
@@ -497,9 +464,6 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
                 body: formDataFile
             });
         }
-
-        window.formSubmitted = true;
-        saveUserAttempt(user.id, true);
         
         alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
         localStorage.removeItem('pending_code');
@@ -507,6 +471,7 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         window.location.href = "https://discord.gg/f5HpfrvWXx";
         
     } catch (err) {
+        console.error('❌ Erreur envoi:', err);
         alert("❌ Erreur lors de l'envoi\n\n" + err.message + "\n\nVérifiez votre connexion ou générez un nouveau lien avec /appel.");
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
