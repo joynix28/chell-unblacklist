@@ -42,7 +42,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function loginDiscord() {
     const encryptedCode = params.code || localStorage.getItem('pending_code');
     if (!encryptedCode) {
-        alert("❌ Pour demander un Unblacklist , ouvre un ticket ici : https://discord.gg/f5HpfrvWXx ");
+        alert("❌ Pour demander un Unblacklist, ouvre un ticket ici : https://discord.gg/f5HpfrvWXx");
         return;
     }
     
@@ -87,19 +87,116 @@ function saveUserAttempt(userId, success = false) {
     localStorage.setItem(trackingKey, JSON.stringify(data));
 }
 
-function increaseUserLimit(userId, newMax) {
-    const trackingKey = `appeals_${userId}`;
-    const stored = localStorage.getItem(trackingKey);
+// NOUVEAU: Générateur HTML formulaire personnalisé
+function generateCustomForm(customFormData) {
+    console.log('🎨 Génération formulaire personnalisé:', customFormData);
     
-    let data = stored ? JSON.parse(stored) : { attempts: 0, maxAttempts: 1 };
-    data.maxAttempts = newMax;
+    const form = document.getElementById('unbanForm');
+    form.innerHTML = '';
     
-    localStorage.setItem(trackingKey, JSON.stringify(data));
+    // Appliquer thème si fourni
+    if (customFormData.theme) {
+        document.documentElement.style.setProperty('--color-primary', customFormData.theme.color || '#6366f1');
+    }
+    
+    // Titre et intro
+    const intro = document.createElement('div');
+    intro.innerHTML = `
+        <h1 class="heading-xl">Formulaire personnalisé</h1>
+        <p class="body-lead">Remplissez tous les champs avec sincérité.</p>
+    `;
+    form.appendChild(intro);
+    
+    // Générer chaque question
+    customFormData.questions.forEach((q, index) => {
+        const fieldset = document.createElement('fieldset');
+        fieldset.className = 'fieldset';
+        
+        const legend = document.createElement('legend');
+        legend.className = 'fieldset-legend';
+        legend.innerHTML = `<h2 class="heading-l">${index + 1}. ${q.label}</h2>`;
+        fieldset.appendChild(legend);
+        
+        const formGroup = document.createElement('div');
+        formGroup.className = 'form-group';
+        
+        let inputHTML = '';
+        const fieldName = `custom_field_${index}`;
+        
+        if (q.type === 'short_text') {
+            inputHTML = `<input class="form-control" type="text" id="${fieldName}" name="${fieldName}" ${q.required ? 'required' : ''}>`;
+        } else if (q.type === 'long_text') {
+            inputHTML = `<textarea class="form-textarea" id="${fieldName}" name="${fieldName}" rows="5" ${q.required ? 'required' : ''}></textarea>`;
+        } else if (q.type === 'select') {
+            inputHTML = `
+                <select class="form-select" id="${fieldName}" name="${fieldName}" ${q.required ? 'required' : ''}>
+                    <option value="">-- Sélectionnez --</option>
+                    ${q.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                </select>
+            `;
+        } else if (q.type === 'checkbox') {
+            inputHTML = q.options.map(opt => `
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="${fieldName}_${opt}" name="${fieldName}[]" value="${opt}" class="form-checkbox">
+                    <label for="${fieldName}_${opt}" class="checkbox-label">${opt}</label>
+                </div>
+            `).join('');
+        } else if (q.type === 'file') {
+            inputHTML = `
+                <input type="file" class="form-file" id="${fieldName}" name="${fieldName}" multiple accept="image/*,.pdf,.txt">
+                <div id="file-list-${index}" class="file-list"></div>
+            `;
+        }
+        
+        formGroup.innerHTML = `
+            <label class="form-label" for="${fieldName}">
+                ${q.label} ${q.required ? '<span class="form-required">(obligatoire)</span>' : '<span class="form-optional">(facultatif)</span>'}
+            </label>
+            ${inputHTML}
+        `;
+        
+        fieldset.appendChild(formGroup);
+        form.appendChild(fieldset);
+    });
+    
+    // CGU
+    const cguGroup = document.createElement('div');
+    cguGroup.className = 'form-group';
+    cguGroup.innerHTML = `
+        <div class="checkbox-wrapper">
+            <input type="checkbox" id="accept_terms" name="accept_terms" class="form-checkbox" required>
+            <label for="accept_terms" class="checkbox-label">
+                J'ai lu et j'accepte le protocole de confidentialité
+                <span class="form-required">(obligatoire)</span>
+            </label>
+        </div>
+    `;
+    form.appendChild(cguGroup);
+    
+    // Warning
+    const warning = document.createElement('div');
+    warning.className = 'warning-text';
+    warning.innerHTML = `
+        <span class="warning-icon">⚠️</span>
+        <div>
+            <strong>Avertissement</strong>
+            <p>Toute fausse déclaration entraînera un rejet immédiat de votre demande.</p>
+        </div>
+    `;
+    form.appendChild(warning);
+    
+    // Bouton submit
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'submit';
+    submitBtn.className = 'button-submit';
+    submitBtn.textContent = 'Soumettre la demande';
+    form.appendChild(submitBtn);
+    
+    console.log('✅ Formulaire personnalisé généré');
 }
 
-window.onload = async () => { 
-    
-    if (params.access_token) { 
+window.onload = async () => {
+    if (params.access_token) {
         localStorage.setItem('discord_token', params.access_token);
         if (params.state) localStorage.setItem('pending_code', params.state);
         window.history.replaceState(null, null, window.location.pathname);
@@ -107,14 +204,13 @@ window.onload = async () => {
 
     const token = localStorage.getItem('discord_token');
     let encryptedCode = params.code || localStorage.getItem('pending_code');
-  
-    if (!encryptedCode) { 
-        document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>❌ Pour demander un Unblacklist , ouvre un ticket ici : https://discord.gg/f5HpfrvWXx</p></div>";
+
+    if (!encryptedCode) {
+        document.body.innerHTML = "<div style='padding:40px;text-align:center;font-family:Inter,sans-serif'><h1 style='color:#d4351c'>❌ Lien invalide</h1><p>❌ Pour demander un Unblacklist, ouvre un ticket ici : https://discord.gg/f5HpfrvWXx</p></div>";
         return;
     }
     
-    // FIX: Restaurer les caractères URL-safe
-    encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/'); 
+    encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
     
     if (params.code) localStorage.setItem('pending_code', params.code);
 
@@ -122,36 +218,38 @@ window.onload = async () => {
         document.getElementById('login-container').classList.add('hidden');
         document.getElementById('form-container').classList.remove('hidden');
         
-        try { 
+        try {
             const userReq = await fetch('https://discord.com/api/users/@me', {
                 headers: { authorization: `Bearer ${token}` }
             });
             
-            if (!userReq.ok) { 
+            if (!userReq.ok) {
                 throw new Error('Token expired');
             }
             
             const user = await userReq.json();
-           
             
-            try { 
-                
+            try {
                 const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
                 const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
-                 
                 
-                if (!decryptedData || decryptedData === '') { 
+                if (!decryptedData || decryptedData === '') {
                     throw new Error('Décryptage échoué');
                 }
                 
                 webhookConfig = JSON.parse(decryptedData);
-            
+                console.log('✅ Webhook configuré:', webhookConfig.webhookUrl ? 'OK' : 'ERREUR');
+                console.log('📝 Formulaire:', webhookConfig.formName);
                 
+                // NOUVEAU: Si formulaire perso, générer le HTML
+                if (webhookConfig.customForm) {
+                    console.log('🎨 Formulaire personnalisé détecté');
+                    generateCustomForm(webhookConfig.customForm);
+                }
                 
                 const allowed = await checkUserAttempts(user.id, webhookConfig.webhookUrl);
                 
                 if (!allowed) {
-                    console.warn('⚠️ Utilisateur bloqué');
                     document.getElementById('form-container').innerHTML = `
                         <div class="container">
                             <div style="text-align: center; padding: 60px 20px;">
@@ -186,8 +284,8 @@ window.onload = async () => {
                     
                     return;
                 }
-            } catch (decryptError)  
-                alert('❌ Erreur de décryptage du lien.\n\nLe lien est invalide ou la clé de cryptage ne correspond pas.\n\Contacte le support.');
+            } catch (decryptError) {
+                alert('❌ Erreur de décryptage du lien.\n\nContacte le support.');
                 localStorage.removeItem('pending_code');
                 localStorage.removeItem('discord_token');
                 setTimeout(() => {
@@ -203,7 +301,7 @@ window.onload = async () => {
             document.getElementById('user-avatar').src = avatarUrl;
             window.discordUser = user;
             
-        } catch (e) { 
+        } catch (e) {
             alert('❌ Une erreur est survenue.\n\n' + e.message + '\n\nVous allez être redirigé.');
             localStorage.removeItem('discord_token');
             if (!params.access_token) {
@@ -283,12 +381,9 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
     submitBtn.textContent = '⏳ Envoi en cours...';
     submitBtn.disabled = true;
     
-    try { 
-        
-        if (!webhookConfig) { 
+    try {
+        if (!webhookConfig) {
             let encryptedCode = localStorage.getItem('pending_code');
-            
-            // Restaurer caractères URL-safe
             encryptedCode = encryptedCode.replace(/-/g, '+').replace(/_/g, '/');
             
             const bytes = CryptoJS.AES.decrypt(encryptedCode, SECRET_KEY);
@@ -319,6 +414,49 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
         if (pingType === 'everyone') pingContent = '@everyone';
         else if (pingType === 'here') pingContent = '@here';
         
+        // Construire les champs pour le formulaire par défaut OU perso
+        let fields = [];
+        
+        if (webhookConfig.customForm) {
+            // Formulaire perso
+            webhookConfig.customForm.questions.forEach((q, index) => {
+                const fieldName = `custom_field_${index}`;
+                let value = formData.get(fieldName) || '_Non fourni_';
+                
+                if (q.type === 'checkbox') {
+                    const checked = formData.getAll(`${fieldName}[]`);
+                    value = checked.length > 0 ? checked.join(', ') : '_Aucune sélection_';
+                }
+                
+                fields.push({
+                    name: q.label,
+                    value: value.substring(0, 1024),
+                    inline: false
+                });
+            });
+        } else {
+            // Formulaire par défaut
+            fields = [
+                { name: "📅 Date de la sanction", value: formData.get("date_blacklist") || "Non renseignée", inline: true },
+                { name: "❓ Raison connue", value: formData.get("reason_known"), inline: true },
+                { name: "\u200b", value: "\u200b", inline: false },
+                { name: "📝 Explication de la raison", value: (formData.get("reason_explanation") || formData.get("reason_unknown") || "_Aucune explication fournie_").substring(0, 1024) },
+                { name: "⚖️ Position sur la décision", value: `**${formData.get("agreement")}**\n${formData.get("agreement_desc").substring(0, 900)}` },
+                { name: "🏳️ Reconnaissance des faits", value: `**${formData.get("admission")}**\n${formData.get("admission_desc").substring(0, 900)}` },
+                { name: "🔧 Analyse et prise de recul", value: formData.get("analysis").substring(0, 1024) },
+                { name: "✨ Motivation pour la levée de sanction", value: formData.get("motivation").substring(0, 1024) }
+            ];
+            
+            if (formData.get("extras")) {
+                fields.push({ name: "💬 Informations complémentaires", value: formData.get("extras").substring(0, 1024) });
+            }
+        }
+        
+        if (uploadedFiles.length > 0) {
+            const fileNames = uploadedFiles.map(f => `📄 ${f.name}`).join('\n');
+            fields.push({ name: "📎 Pièces jointes", value: fileNames.substring(0, 1024) });
+        }
+        
         const mainEmbed = {
             title: "📨 Nouvelle demande de révision de sanction",
             description: `**Utilisateur :** ${user.username} (\`${user.id}\`)`,
@@ -328,81 +466,27 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
                     ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
                     : `https://cdn.discordapp.com/embed/avatars/0.png`
             },
-            fields: [
-                { 
-                    name: "📅 Date de la sanction", 
-                    value: formData.get("date_blacklist") || "Non renseignée", 
-                    inline: true 
-                },
-                { 
-                    name: "❓ Raison connue", 
-                    value: formData.get("reason_known"), 
-                    inline: true 
-                },
-                { name: "\u200b", value: "\u200b", inline: false },
-                { 
-                    name: "📝 Explication de la raison", 
-                    value: (formData.get("reason_explanation") || formData.get("reason_unknown") || "_Aucune explication fournie_").substring(0, 1024)
-                },
-                { 
-                    name: "⚖️ Position sur la décision", 
-                    value: `**${formData.get("agreement")}**\n${formData.get("agreement_desc").substring(0, 900)}`
-                },
-                { 
-                    name: "🏳️ Reconnaissance des faits", 
-                    value: `**${formData.get("admission")}**\n${formData.get("admission_desc").substring(0, 900)}`
-                }
-            ],
+            fields: fields,
             footer: { text: "Système de révision Chell" },
             timestamp: new Date().toISOString()
         };
         
-        const detailsEmbed = {
-            color: 0xa855f7,
-            fields: [
-                { 
-                    name: "🔧 Analyse et prise de recul", 
-                    value: formData.get("analysis").substring(0, 1024)
-                },
-                { 
-                    name: "✨ Motivation pour la levée de sanction", 
-                    value: formData.get("motivation").substring(0, 1024)
-                }
-            ]
-        };
-        
-        if (formData.get("extras")) {
-            detailsEmbed.fields.push({ 
-                name: "💬 Informations complémentaires", 
-                value: formData.get("extras").substring(0, 1024) 
-            });
-        }
-        
-        if (uploadedFiles.length > 0) {
-            const fileNames = uploadedFiles.map(f => `📄 ${f.name}`).join('\n');
-            detailsEmbed.fields.push({ 
-                name: "📎 Pièces jointes", 
-                value: fileNames.substring(0, 1024)
-            });
-        }
-        
         const payload = {
             content: pingContent,
-            embeds: [mainEmbed, detailsEmbed]
+            embeds: [mainEmbed]
         };
-         
+        
         const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) { 
+        if (!response.ok) {
             throw new Error('Erreur webhook');
         }
-         
         
-        for (const file of uploadedFiles) { 
+        for (const file of uploadedFiles) {
             const formDataFile = new FormData();
             const blob = await fetch(file.data).then(r => r.blob());
             formDataFile.append('files[0]', blob, file.name);
@@ -416,14 +500,13 @@ document.getElementById('unbanForm').addEventListener('submit', async (e) => {
 
         window.formSubmitted = true;
         saveUserAttempt(user.id, true);
-         
+        
         alert("✅ Demande envoyée avec succès !\n\nL'équipe de modération examinera votre dossier dans les plus brefs délais.");
         localStorage.removeItem('pending_code');
         localStorage.removeItem('discord_token');
         window.location.href = "https://discord.gg/f5HpfrvWXx";
         
     } catch (err) {
- 
         alert("❌ Erreur lors de l'envoi\n\n" + err.message + "\n\nVérifiez votre connexion ou générez un nouveau lien avec /appel.");
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
