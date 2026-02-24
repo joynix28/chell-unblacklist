@@ -1,4 +1,22 @@
-node_modules/
+# Environment variables
 .env
+
+# Node modules
+node_modules/
+
+# Database files (optional: uncommit if you want to keep in repo)
+appeals_db.json
+blacklisted_webhooks.json
+custom_forms.json
+appeals_history.json
+config.json
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
 .DS_Store
+Thumbs.db
