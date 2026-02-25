@@ -1,12 +1,25 @@
-# Dependencies
-node_modules/
-
-# Environment variables
+# Environnement & Secrets
 .env
+.env.local
+.env.production
+
+# Node modules
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Databases (données sensibles)
+bot/*_db.json
+bot/appeals_db.json
+bot/custom_forms.json
+bot/appeals_history.json
+bot/blacklisted_webhooks.json
+bot/config.json
 
 # Logs
 *.log
-npm-debug.log*
+logs/
 
 # OS
 .DS_Store
@@ -16,7 +29,10 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
-# Build
+# Build/dist
 dist/
 build/
+.cache/
